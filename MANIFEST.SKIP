@@ -8,6 +8,7 @@ MYMETA.*
 _build/
 cover_db/
 blib/
+.git/
 inc/
 .lwpcookies
 .last_cover_stats

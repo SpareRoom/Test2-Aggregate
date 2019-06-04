@@ -1,7 +1,3 @@
-#!perl -T
-use 5.006;
-use strict;
-use warnings;
 use Test::More;
 
 unless ( $ENV{RELEASE_TESTING} ) {
