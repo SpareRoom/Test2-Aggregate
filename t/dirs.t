@@ -4,5 +4,5 @@ use Test2::Aggregate;
 plan(2);
 
 Test2::Aggregate::run_tests(
-    dirs => ['aggregate']
+    dirs => ['xt/aggregate']
 );

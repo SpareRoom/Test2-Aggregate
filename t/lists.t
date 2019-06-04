@@ -4,5 +4,5 @@ use Test2::Aggregate;
 plan(2);
 
 Test2::Aggregate::run_tests(
-    lists => ['aggregate/aggregate.lst']
+    lists => ['xt/aggregate/aggregate.lst']
 );

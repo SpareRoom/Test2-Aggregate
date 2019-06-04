@@ -1,6 +1,3 @@
-aggregate/aggregate.lst
-aggregate/check_env.t
-aggregate/check_plan.t
 Changes
 lib/Test2/Aggregate.pm
 Makefile.PL
@@ -11,6 +8,9 @@ t/00-load.t
 t/dirs.t
 t/lists.t
 t/warn.t
+xt/aggregate/aggregate.lst
+xt/aggregate/check_env.t
+xt/aggregate/check_plan.t
 xt/author/manifest.t
 xt/author/pod-coverage.t
 xt/author/pod.t
