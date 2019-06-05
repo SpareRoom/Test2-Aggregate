@@ -34,13 +34,13 @@ our $VERSION = '0.1';
 
 Aggregates all tests specified in C<dirs> (which can even be individual tests), 
 to avoid forking, reloading etc that can help with performance or profiling.
-Test files are expected to end in B<.t> and are ran as subtests of a single
+Test files are expected to end in B<.t> and are run as subtests of a single
 aggregate test.
 
-A bit similar but simpler in concept and execution than C<Test::Aggregate>, so
-that it is more likely to run with your test suite and also will work with more
+A bit similar but simpler in concept and execution than C<Test::Aggregate>,
+which makes it more likely to work with your test suite and also with more
 modern Test2 bundles. It does not try to package each test which may be good or
-bad (e.g. redefines) depending on your requirements.
+bad (e.g. redefines), depending on your requirements.
 
 =head1 METHODS
  
@@ -56,7 +56,7 @@ bad (e.g. redefines) depending on your requirements.
         slow          => 1,                   # optional
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional, requires Time::HiRes
-        test_warnings => 1                    # optional, requires Data::Dumper
+        test_warnings => 1                    # optional
     );
 
 Runs the aggregate tests. Hash parameter specifies:
@@ -253,9 +253,10 @@ sometimes very simple changes might needed like giving unique names to subs (or
 not warning for redefines, or replacing things that complain such as
 C<Test::More>), restoring the environment at the end of the test etc.
 
-Talking about C<Test::More>, replacing `use Test2:V0` with `use Test::More` in
-this module would work (except for C<repeat < 0>) and not complain on Test::More
-based suites, but I'd think it's better to start moving to Test2.
+Speaking about C<Test::More>, by replacing C<Test2:V0> with C<Test::More> in the
+sourche of this module would generally work fine (except for the option
+C<repeat < 0>) and not complain on C<Test::More>-based suites, but perhaps you'd
+be better off starting to move to Test2.
 
 The environment variable C<AGGREGATE_TESTS> will be set while the tests are
 running. Example usage is a module that can only be loaded once, so you load it
@@ -266,7 +267,9 @@ test files:
 
 Trying to aggregate too many tests into a single one can be counter-intuitive as
 you would ideally want to parallelize your test suite (so a super-long test
-continuing after the rest are done will slow down the suite).
+continuing after the rest are done will slow down the suite). And in general
+more tests will run aggregated if they are grouped so that tests that can't be
+aggregated together are in different groups.
 
 =head1 AUTHOR
 
