@@ -254,7 +254,7 @@ not warning for redefines, or replacing things that complain such as
 C<Test::More>), restoring the environment at the end of the test etc.
 
 Speaking about C<Test::More>, by replacing C<Test2:V0> with C<Test::More> in the
-sourche of this module would generally work fine (except for the option
+source of this module would generally work fine (except for the option
 C<repeat < 0>) and not complain on C<Test::More>-based suites, but perhaps you'd
 be better off starting to move to Test2.
 
