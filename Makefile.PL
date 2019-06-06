@@ -18,7 +18,8 @@ my %WriteMakefileArgs = (
         'Test2::Tools::Basic' => '0'
     },
     PREREQ_PM => {
-        'Test2::V0' => '0'
+        'File::Slurp' => '0',
+        'Test2::V0'   => '0'
     },
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean => { FILES => 'Test2-Aggregate-*' },
