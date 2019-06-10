@@ -1,5 +1,8 @@
 Revision history for Test2-Aggregate
 
+0.03    2019-06-11
+        Fix for MacOS File::Find, pass tests for @INC not containing '.'.
+
 0.02    2019-06-10
         Fix root option, add load_modules, no implicit done_testing().
 
