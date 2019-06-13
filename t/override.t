@@ -6,7 +6,7 @@ plan skip_all => "Sub::Override required for override option" if $@;
 
 plan(1);
 
-my $root = (grep {/$\.$/i} @INC) ? undef : './';
+my $root = (grep {/^\.$/i} @INC) ? undef : './';
 
 Test2::Aggregate::run_tests(
     dirs     => ['xt/aggregate'],

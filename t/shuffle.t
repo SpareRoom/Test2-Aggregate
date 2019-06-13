@@ -6,7 +6,7 @@ plan skip_all => "List::Util required for shuffle option" if $@;
 
 plan(2);
 
-my $root = (grep {/$\.$/i} @INC) ? undef : './';
+my $root = (grep {/^\.$/i} @INC) ? undef : './';
 
 Test2::Aggregate::run_tests(
     dirs    => ['xt/aggregate'],

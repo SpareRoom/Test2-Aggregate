@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 
 =head1 DESCRIPTION
@@ -146,7 +146,10 @@ sub run_tests {
         push @dirs, split(/\r?\n/, $list);
     }
 
-    find(sub{push @tests, $File::Find::name if /\.t$/}, map {$root.$_} @dirs)
+    find(
+        sub {push @tests, $File::Find::name if /\.t$/},
+        grep {-e} map {$root . $_} @dirs
+    )
         if @dirs;
 
     @tests = reverse @tests if $args{reverse};
