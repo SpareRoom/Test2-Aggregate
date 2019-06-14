@@ -1,7 +1,9 @@
 Revision history for Test2-Aggregate
 
-0.04    2019-06-13
-        Don't warn on non-existent paths. Pass tests for @INC not containing '.'.
+0.04    2019-06-14
+        Don't warn on non-existent paths.
+        STDOUT option for stats_output.
+        Pass tests for @INC not containing '.'.
 
 0.03    2019-06-10
         File::Find fix for Perl <= 5.22.

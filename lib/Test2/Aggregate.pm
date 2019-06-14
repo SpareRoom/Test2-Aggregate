@@ -120,6 +120,7 @@ time per test (average if multiple iterations are specified), starting with the
 slowest test and passing percentage gets written. On negative C<repeat> the
 stats of each successful run will be written separately instead of the averages.
 The name of the file is C<caller_script-YYYYMMDD_HHmmss.txt>.
+If C<-> is passed instead of a path, then STDOUT will be used instead.
 
 =back
 
@@ -236,8 +237,13 @@ sub _print_stats {
         }
     }
 
-    my $file = $args->{stats_output}."/".$args->{caller}."-"._timestamp().".txt";
-    open(my $fh, '>', $file) or die "Can't open > $file: $!";
+    my $fh;
+    if ($args->{stats_output} =~ /^-$/) {
+        $fh = *STDOUT
+    } else {
+        my $file = $args->{stats_output}."/".$args->{caller}."-"._timestamp().".txt";
+        open($fh, '>', $file) or die "Can't open > $file: $!";
+    }
 
     print $fh "TIME PASS% TEST\n";
     my $total = 0;
@@ -247,7 +253,7 @@ sub _print_stats {
             $stats->{time}->{$test}, $stats->{pass_perc}->{$test};
     }
     printf $fh "TOTAL TIME: %.1f sec\n", $total;
-    close $fh;
+    close $fh unless $args->{stats_output} =~ /^-$/;
 }
 
 sub _timestamp {
