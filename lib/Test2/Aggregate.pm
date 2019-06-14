@@ -151,7 +151,7 @@ sub run_tests {
         sub {push @tests, $File::Find::name if /\.t$/},
         grep {-e} map {$root . $_} @dirs
     )
-        if @dirs;
+        if @dirs && (!$root || -e $root);
 
     @tests = reverse @tests if $args{reverse};
 
