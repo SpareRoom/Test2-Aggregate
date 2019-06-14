@@ -13,14 +13,13 @@ Test2::Aggregate::run_tests(
     test_warnings => 1
 );
 
-is(
+like(
     warnings {
         Test2::Aggregate::run_tests(
             dirs => ['xt/aggregate'],
             root => '/xx'
         )
     },
-    [],
-    'No warnings for invalid root.'
+    [qr/Root .* does not exist/],
+    'Single warning for invalid root.'
 );
-

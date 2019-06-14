@@ -79,7 +79,8 @@ Arrayref of flat files from which each line will be pushed to C<dirs>
 
 =item * C<root> (optional)
 
-Specifies a root directory to prefix all C<dirs> (and C<lists> items) with.
+If defined, must be a valid root directory that will prefix all C<dirs> and
+C<lists> items.
 
 =item * C<load_modules> (optional)
 
@@ -142,16 +143,19 @@ sub run_tests {
     @dirs = @{$args{dirs}} if $args{dirs};
     $root .= '/' unless !$root || $root =~ m#/$#;
 
-    foreach my $file (@{$args{lists}}) {
-        my $list = read_file("$root$file");
-        push @dirs, split(/\r?\n/, $list);
-    }
+    if ($root && ! -e $root) {
+        warn "Root '$root' does not exist, no tests are loaded."
+    } else {
+        foreach my $file (@{$args{lists}}) {
+            push @dirs, split(/\r?\n/, read_file("$root$file"));
+        }
 
-    find(
-        sub {push @tests, $File::Find::name if /\.t$/},
-        grep {-e} map {$root . $_} @dirs
-    )
-        if @dirs && (!$root || -e $root);
+        find(
+            sub {push @tests, $File::Find::name if /\.t$/},
+            grep {-e} map {$root . $_} @dirs
+        )
+            if @dirs;
+    }
 
     @tests = reverse @tests if $args{reverse};
 
