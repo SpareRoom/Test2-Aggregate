@@ -55,7 +55,7 @@ bad (e.g. redefines), depending on your requirements.
         load_modules  => \@modules,           # optional
         shuffle       => 0,                   # optional
         reverse       => 0,                   # optional
-        repeat        => $no_iterations,      # optional, requires Test2::Plugin::BailOnFail for < 0
+        repeat        => 1,                   # optional, requires Test2::Plugin::BailOnFail for < 0
         slow          => 0,                   # optional
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional, requires Time::HiRes
@@ -94,8 +94,9 @@ Pass C<Sub::Override> key/values as a hashref.
 
 =item * C<repeat> (optional)
 
-Number of times to repeat the test(s). If C<repeat> is negative, the test will
-repeat until it fails (or produces a warning when C<test_warnings> is also set).
+Number of times to repeat the test(s) (default is 1 for a single run). If
+C<repeat> is negative, the tests will repeat until they fail (or produce a
+warning if C<test_warnings> is also set).
 
 =item * C<shuffle> (optional)
 
@@ -123,6 +124,8 @@ slowest test and passing percentage gets written. On negative C<repeat> the
 stats of each successful run will be written separately instead of the averages.
 The name of the file is C<caller_script-YYYYMMDD_HHmmss.txt>.
 If C<-> is passed instead of a path, then STDOUT will be used instead.
+The timing stats are useful because the test harness doesn not normally measure
+type by subtest.
 
 =back
 
@@ -269,10 +272,10 @@ sub _timestamp {
 =head1 USAGE NOTES
 
 Not all tests can be modified to run under the aggregator, it is not intended
-for tests that require an isolated environment. So, for those that do not,
-sometimes very simple changes might needed like giving unique names to subs (or
-not warning for redefines, or replacing things that complain, restoring the
-environment at the end of the test etc.
+for tests that require an isolated environment. So, for those that do not and
+can potentially run under the aggregator, sometimes very simple changes might be
+needed like giving unique names to subs (or not warning for redefines), replacing
+things that complain, restoring the environment at the end of the test etc.
 
 The environment variable C<AGGREGATE_TESTS> will be set while the tests are
 running. Example usage is a module that can only be loaded once, so you load it
