@@ -205,17 +205,16 @@ sub _run_tests {
     $repeat = 1 if $repeat < 0;
     my %stats;
 
-    require Time::HiRes if $args->{stats_output};
+    eval 'use Time::HiRes qw(time)' if $args->{stats_output};
 
     for (1 .. $repeat) {
         my $iter = $repeat > 1 ? "Iter: $_/$repeat - " : '';
         foreach my $test (@$tests) {
-            my $start  = Time::HiRes::time() if $args->{stats_output};
+            my $start = time();
             my $result = subtest $iter. "Running test $test" => sub {
                 do $test;
             };
-            $stats{time}{$test} += (Time::HiRes::time() - $start)/$repeat
-                 if $args->{stats_output};
+            $stats{time}{$test} += (time() - $start)/$repeat;
             $stats{pass_perc}{$test} += $result ? 100/$repeat : 0;
         }
     }
