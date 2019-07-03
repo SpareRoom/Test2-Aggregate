@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.05
+Version 0.06
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 
 =head1 DESCRIPTION
@@ -59,6 +59,7 @@ bad (e.g. redefines), depending on your requirements.
         slow          => 0,                   # optional
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional, requires Time::HiRes
+        extend_stats  => 0,                   # optional
         test_warnings => 0                    # optional
     );
 
@@ -122,10 +123,16 @@ C<stats_output_path> when defined specifies a path where a file with running
 time per test (average if multiple iterations are specified), starting with the
 slowest test and passing percentage gets written. On negative C<repeat> the
 stats of each successful run will be written separately instead of the averages.
-The name of the file is C<caller_script-YYYYMMDD_HHmmss.txt>.
+The name of the file is C<caller_script-YYYYMMDDTHHmmss.txt>.
 If C<-> is passed instead of a path, then STDOUT will be used instead.
 The timing stats are useful because the test harness doesn not normally measure
 type by subtest.
+
+=item * C<extend_stats> (optional)
+
+This is to allow default output of C<stats_output_path> to be fixed/reliable and
+anything additional in future versions requires C<extend_stats> to be shown.
+Currently starting date/time in ISO_8601 is added.
 
 =back
 
@@ -174,7 +181,7 @@ sub run_tests {
 
     my $warnings=[];
     if ($args{repeat} && $args{repeat} < 0) {
-        require Test2::Plugin::BailOnFail;
+        eval 'use Test2::Plugin::BailOnFail';
         my $iter = 0;
         while (!@$warnings) {
             $iter++;
@@ -211,6 +218,7 @@ sub _run_tests {
         my $iter = $repeat > 1 ? "Iter: $_/$repeat - " : '';
         foreach my $test (@$tests) {
             my $start = time();
+            $stats{timestamp}{$test} = _timestamp();
             my $result = subtest $iter. "Running test $test" => sub {
                 do $test;
             };
@@ -252,11 +260,13 @@ sub _print_stats {
         open($fh, '>', $file) or die "Can't open > $file: $!";
     }
 
-    print $fh "TIME PASS% TEST\n";
+    my $extra = $args->{extend_stats} ? ' TIMESTAMP' : '';
+    print $fh "TIME PASS%$extra TEST\n";
     my $total = 0;
     foreach my $test (sort {$stats->{time}->{$b}<=>$stats->{time}->{$a}} keys %{$stats->{time}}) {
+        $extra = ' '.$stats->{timestamp}->{$test} if $args->{extend_stats};
         $total += $stats->{time}->{$test};
-        printf $fh "%.2f %d $test\n",
+        printf $fh "%.2f %d$extra $test\n",
             $stats->{time}->{$test}, $stats->{pass_perc}->{$test};
     }
     printf $fh "TOTAL TIME: %.1f sec\n", $total;
@@ -265,7 +275,7 @@ sub _print_stats {
 
 sub _timestamp {
     my ($s, $m, $h, $D, $M, $Y) = localtime(time);
-    return sprintf "%04d%02d%02d_%02d%02d%02d", $Y+1900, $M+1, $D, $h, $m, $s;
+    return sprintf "%04d%02d%02dT%02d%02d%02d", $Y+1900, $M+1, $D, $h, $m, $s;
 }
 
 =head1 USAGE NOTES
