@@ -1,5 +1,10 @@
 Revision history for Test2-Aggregate
 
+0.06    2019-
+        extend_stats option.
+        Fix repeat<0.
+        Perl critic test & fix.
+
 0.05    2019-06-21
         Avoid Test::More redefine warnings.
         Defaults shown in POD method description.
