@@ -1,6 +1,6 @@
 Revision history for Test2-Aggregate
 
-0.06    2019-
+0.06    2019-07-04
         extend_stats option.
         Fix repeat<0.
         Perl critic test & fix.

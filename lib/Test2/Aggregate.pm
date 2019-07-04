@@ -127,6 +127,8 @@ The name of the file is C<caller_script-YYYYMMDDTHHmmss.txt>.
 If C<-> is passed instead of a path, then STDOUT will be used instead.
 The timing stats are useful because the test harness doesn not normally measure
 type by subtest.
+You may even want to consider looking at and overriding the private C<_print_stats>
+sub if you want to export the stats in a different way for your testing pipeline.
 
 =item * C<extend_stats> (optional)
 
