@@ -1,5 +1,8 @@
 Revision history for Test2-Aggregate
 
+0.07    2019-07-04
+        Fix stats bug from 0.06.
+
 0.06    2019-07-04
         extend_stats option.
         Fix repeat<0.

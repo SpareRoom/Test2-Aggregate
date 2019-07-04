@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.06
+Version 0.07
 
 =cut
 
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 
 =head1 DESCRIPTION
@@ -43,6 +43,10 @@ A bit similar but simpler in concept and execution than C<Test::Aggregate>,
 which makes it more likely to work with your test suite and also with more
 modern Test2 bundles. It does not try to package each test which may be good or
 bad (e.g. redefines), depending on your requirements.
+
+Generally, the way to use this module is to try to aggregate sets of quick tests
+like unit tests. Or try to iterativelly add tests to the aggregator dropping
+those that do not work.
 
 =head1 METHODS
  
@@ -214,17 +218,19 @@ sub _run_tests {
     $repeat = 1 if $repeat < 0;
     my %stats;
 
-    eval 'use Time::HiRes qw(time)' if $args->{stats_output};
+    eval 'require Time::HiRes' if $args->{stats_output};
 
     for (1 .. $repeat) {
         my $iter = $repeat > 1 ? "Iter: $_/$repeat - " : '';
         foreach my $test (@$tests) {
-            my $start = time();
+            my $start;
+            $start = Time::HiRes::time() if $args->{stats_output};
             $stats{timestamp}{$test} = _timestamp();
             my $result = subtest $iter. "Running test $test" => sub {
                 do $test;
             };
-            $stats{time}{$test} += (time() - $start)/$repeat;
+            $stats{time}{$test} += (Time::HiRes::time() - $start)/$repeat
+                if $args->{stats_output};
             $stats{pass_perc}{$test} += $result ? 100/$repeat : 0;
         }
     }

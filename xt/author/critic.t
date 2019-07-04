@@ -6,7 +6,7 @@ use warnings;
 use Test::Perl::Critic (-exclude => ['ProhibitStringyEval']);
 use Test::More;
 
-unless ( $ENV{RELEASE_TESTING} ) {
+unless ( $ENV{AUTHOR_TESTING} ) {
     plan( skip_all => "Author tests not required for installation" );
 }
 
