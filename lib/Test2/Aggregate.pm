@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.07
+Version 0.08
 
 =cut
 
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 
 
 =head1 DESCRIPTION
@@ -45,14 +45,14 @@ modern Test2 bundles. It does not try to package each test which may be good or
 bad (e.g. redefines), depending on your requirements.
 
 Generally, the way to use this module is to try to aggregate sets of quick tests
-like unit tests. Or try to iterativelly add tests to the aggregator dropping
-those that do not work.
+(e.g. unit tests). Try to iterativelly add tests to the aggregator dropping those
+that do not work.
 
 =head1 METHODS
  
 =head2 C<run_tests>
 
-    Test2::Aggregate::run_tests(
+    my $stats = Test2::Aggregate::run_tests(
         dirs          => \@dirs,              # optional if lists defined
         lists         => \@lists,             # optional if dirs defined
         root          => '/testroot/',        # optional
@@ -67,7 +67,18 @@ those that do not work.
         test_warnings => 0                    # optional
     );
 
-Runs the aggregate tests. Hash parameter specifies:
+Runs the aggregate tests. Returns a hashref with stats like this:
+
+  $stats = {
+    'test.t' => {
+      'test_no'   => 1,                 # numbering starts at 1
+      'pass_perc' => 100,               # for single runs pass/fail is 100/0
+      'timestamp' => '20190705T145043', # start of test
+      'time'      => '0.1732'           # only with stats_output
+    }
+  };
+
+The parameters to pass:
 
 =over 4
  
@@ -129,10 +140,8 @@ slowest test and passing percentage gets written. On negative C<repeat> the
 stats of each successful run will be written separately instead of the averages.
 The name of the file is C<caller_script-YYYYMMDDTHHmmss.txt>.
 If C<-> is passed instead of a path, then STDOUT will be used instead.
-The timing stats are useful because the test harness doesn not normally measure
-type by subtest.
-You may even want to consider looking at and overriding the private C<_print_stats>
-sub if you want to export the stats in a different way for your testing pipeline.
+The timing stats are useful because the test harness doesn't normally measure
+time per subtest.
 
 =item * C<extend_stats> (optional)
 
@@ -208,7 +217,10 @@ sub run_tests {
     } else {
         _run_tests(\@tests, \%args);
     }
+
     warn "Test warning output:\n".join("\n", @$warnings)."\n" if @$warnings;
+
+    return $args{stats};
 }
 
 sub _run_tests {
@@ -222,20 +234,23 @@ sub _run_tests {
 
     for (1 .. $repeat) {
         my $iter = $repeat > 1 ? "Iter: $_/$repeat - " : '';
+        my $count = 0;
         foreach my $test (@$tests) {
             my $start;
+            $stats{$test}{test_no}=++$count;
             $start = Time::HiRes::time() if $args->{stats_output};
-            $stats{timestamp}{$test} = _timestamp();
+            $stats{$test}{timestamp} = _timestamp();
             my $result = subtest $iter. "Running test $test" => sub {
                 do $test;
             };
-            $stats{time}{$test} += (Time::HiRes::time() - $start)/$repeat
+            $stats{$test}{time} += (Time::HiRes::time() - $start)/$repeat
                 if $args->{stats_output};
-            $stats{pass_perc}{$test} += $result ? 100/$repeat : 0;
+            $stats{$test}{pass_perc} += $result ? 100/$repeat : 0;
         }
     }
 
     _print_stats(\%stats, $args) if $args->{stats_output};
+    $args->{stats} = \%stats;
 }
 
 sub _override {
@@ -271,11 +286,11 @@ sub _print_stats {
     my $extra = $args->{extend_stats} ? ' TIMESTAMP' : '';
     print $fh "TIME PASS%$extra TEST\n";
     my $total = 0;
-    foreach my $test (sort {$stats->{time}->{$b}<=>$stats->{time}->{$a}} keys %{$stats->{time}}) {
-        $extra = ' '.$stats->{timestamp}->{$test} if $args->{extend_stats};
-        $total += $stats->{time}->{$test};
+    foreach my $test (sort {$stats->{$b}->{time}<=>$stats->{$a}->{time}} keys %$stats) {
+        $extra = ' '.$stats->{$test}->{timestamp} if $args->{extend_stats};
+        $total += $stats->{$test}->{time};
         printf $fh "%.2f %d$extra $test\n",
-            $stats->{time}->{$test}, $stats->{pass_perc}->{$test};
+            $stats->{$test}->{time}, $stats->{$test}->{pass_perc};
     }
     printf $fh "TOTAL TIME: %.1f sec\n", $total;
     close $fh unless $args->{stats_output} =~ /^-$/;
