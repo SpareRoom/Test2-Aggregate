@@ -77,7 +77,7 @@ Runs the aggregate tests. Returns a hashref with stats like this:
       'test_no'   => 1,                 # numbering starts at 1
       'pass_perc' => 100,               # for single runs pass/fail is 100/0
       'timestamp' => '20190705T145043', # start of test
-      'time'      => '0.1732',          # only with stats_output
+      'time'      => '0.1732',          # seconds - only with stats_output
       'warnings'  => $STDERR            # only with test_warnings on non empty STDERR
     }
   };
