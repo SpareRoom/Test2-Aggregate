@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.09_3
+Version 0.10
 
 =cut
 
-our $VERSION = '0.09_3';
+our $VERSION = '0.10';
 
 
 =head1 DESCRIPTION
