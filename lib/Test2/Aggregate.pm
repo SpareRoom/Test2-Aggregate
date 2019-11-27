@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.10
+Version 0.10_02
 
 =cut
 
-our $VERSION = '0.10';
+our $VERSION = '0.10_02';
 
 
 =head1 DESCRIPTION
@@ -62,6 +62,7 @@ that do not work.
         shuffle       => 0,                   # optional
         sort          => 0,                   # optional
         reverse       => 0,                   # optional
+        unique        => 1,                   # optional
         repeat        => 1,                   # optional, requires Test2::Plugin::BailOnFail for < 0
         slow          => 0,                   # optional
         override      => \%override,          # optional, requires Sub::Override
@@ -121,6 +122,12 @@ Pass C<Sub::Override> key/values as a hashref.
 Number of times to repeat the test(s) (default is 1 for a single run). If
 C<repeat> is negative, the tests will repeat until they fail (or produce a
 warning if C<test_warnings> is also set).
+
+=item * C<unique> (optional)
+
+Since v0.11, duplicate tests are by default removed from the running list as that
+could mess up the stats output. You can still set it to a false value to allow
+duplicate tests in the list.
 
 =item * C<shuffle> (optional)
 
@@ -199,6 +206,8 @@ sub run_tests {
             if @dirs;
     }
 
+    $args{unique} = 1       if !defined $args{unique};
+    @tests = _uniq(@tests)  if $args{unique};
     @tests = reverse @tests if $args{reverse};
 
     if ($args{shuffle}) {
@@ -283,7 +292,8 @@ sub _run_tests {
 
             warn "$test->Test2::Aggregate\n" if $args->{test_warnings};
 
-            $stats{$test}{test_no}=++$count;
+            $count++;
+            $stats{$test}{test_no} ||= $count;
             $start = Time::HiRes::time() if $args->{stats_output};
             $stats{$test}{timestamp} = _timestamp();
 
@@ -348,6 +358,11 @@ sub _print_stats {
 
     printf $fh "TOTAL TIME: %.1f sec\n", $total;
     close $fh unless $args->{stats_output} =~ /^-$/;
+}
+
+sub _uniq {
+    my %seen;
+    grep !$seen{$_}++, @_;
 }
 
 sub _timestamp {

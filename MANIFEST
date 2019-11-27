@@ -14,6 +14,7 @@ t/repeat.t
 t/shuffle.t
 t/slow.t
 t/stats.t
+t/unique.t
 t/warn.t
 xt/aggregate/aggregate.lst
 xt/aggregate/check_env.t

@@ -1,5 +1,8 @@
 Revision history for Test2-Aggregate
 
+0.10_2  2019-11-27 - beta
+        unique option - remove dupe tests by default.
+
 0.10    2019-11-23
         sort option for fixed order.
         package option fixes & tests.
