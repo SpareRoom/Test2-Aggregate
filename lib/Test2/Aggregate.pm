@@ -25,11 +25,11 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.10_02
+Version 0.10_03
 
 =cut
 
-our $VERSION = '0.10_02';
+our $VERSION = '0.10_03';
 
 
 =head1 DESCRIPTION
@@ -56,6 +56,7 @@ that do not work.
     my $stats = Test2::Aggregate::run_tests(
         dirs          => \@dirs,              # optional if lists defined
         lists         => \@lists,             # optional if dirs defined
+        excludes      => \@exclude_regexes,   # optional
         root          => '/testroot/',        # optional
         load_modules  => \@modules,           # optional
         package       => 0,                   # optional
@@ -97,6 +98,10 @@ true) will be processed and tests run in order specified.
 
 Arrayref of flat files from which each line will be pushed to C<dirs>
 (so they have a lower precedence - note C<root> still applies).
+
+=item * C<excludes> (optional)
+
+Arrayref of regexes to filter out tests that you want excluded.
 
 =item * C<root> (optional)
 
@@ -206,21 +211,14 @@ sub run_tests {
             if @dirs;
     }
 
-    $args{unique} = 1       if !defined $args{unique};
-    @tests = _uniq(@tests)  if $args{unique};
-    @tests = reverse @tests if $args{reverse};
+    $args{unique} = 1 unless defined $args{unique};
+    $args{repeat} ||= 1;
 
-    if ($args{shuffle}) {
-        require List::Util;
-        @tests = List::Util::shuffle @tests;
-    } elsif ($args{sort}) {
-        @tests = sort @tests;
-    }
+    _process_run_order(\@tests, \%args);
 
     my @stack = caller();
     $args{caller} = $stack[1] || 'aggregate';
     $args{caller} =~ s#^.*?([^/]+)$#$1#;
-    $args{repeat} ||= 1;
 
     my $warnings = [];
     if ($args{repeat} < 0) {
@@ -256,6 +254,25 @@ sub run_tests {
         if @$warnings;
 
     return $args{stats};
+}
+
+sub _process_run_order {
+    my $tests = shift;
+    my $args  = shift;
+
+    foreach my $regex (@{$args->{excludes}}) {
+        @$tests = grep(!/$regex/, @$tests);
+    }
+
+    @$tests = _uniq(@$tests)  if $args->{unique};
+    @$tests = reverse @$tests if $args->{reverse};
+
+    if ($args->{shuffle}) {
+        require List::Util;
+        @$tests = List::Util::shuffle @$tests;
+    } elsif ($args->{sort}) {
+        @$tests = sort @$tests;
+    }
 }
 
 sub _process_warnings {
