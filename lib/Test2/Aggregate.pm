@@ -303,15 +303,13 @@ sub _run_tests {
 
     for my $i (1 .. $repeat) {
         my $iter = $repeat > 1 ? "Iter: $i/$repeat - " : '';
-        my $count = 0;
+        my $count = 1;
         foreach my $test (@$tests) {
-            my $start;
 
             warn "$test->Test2::Aggregate\n" if $args->{test_warnings};
 
-            $count++;
-            $stats{$test}{test_no} ||= $count;
-            $start = Time::HiRes::time() if $args->{stats_output};
+            $stats{$test}{test_no} = $count unless $stats{$test}{test_no};
+            my $start = Time::HiRes::time() if $args->{stats_output};
             $stats{$test}{timestamp} = _timestamp();
 
             my $result = subtest $iter. "Running test $test" => sub {
@@ -325,6 +323,7 @@ sub _run_tests {
             $stats{$test}{time} += (Time::HiRes::time() - $start)/$repeat
                 if $args->{stats_output};
             $stats{$test}{pass_perc} += $result ? 100/$repeat : 0;
+            $count++;
         }
     }
 

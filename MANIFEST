@@ -15,6 +15,7 @@ t/repeat.t
 t/shuffle.t
 t/slow.t
 t/stats.t
+t/stats2.t
 t/unique.t
 t/warn.t
 xt/aggregate/aggregate.lst
