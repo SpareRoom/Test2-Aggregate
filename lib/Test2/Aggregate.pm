@@ -25,16 +25,16 @@ Test2::Aggregate - Aggregate tests
 
 =head1 VERSION
 
-Version 0.10_03
+Version 0.11
 
 =cut
 
-our $VERSION = '0.10_03';
+our $VERSION = '0.11';
 
 
 =head1 DESCRIPTION
 
-Aggregates all tests specified in C<dirs> (which can even be individual tests), 
+Aggregates all tests specified with C<dirs> (which can even be individual tests)
 to avoid forking, reloading etc that can help with performance (dramatically if
 you have numerous small tests) and also facilitate group profiling.
 Test files are expected to end in B<.t> and are run as subtests of a single
@@ -46,8 +46,8 @@ tools like Test2). It does not even try to package each test by default, which m
 be good or bad (e.g. redefines), depending on your requirements.
 
 Generally, the way to use this module is to try to aggregate sets of quick tests
-(e.g. unit tests). Try to iterativelly add tests to the aggregator dropping those
-that do not work.
+(e.g. unit tests). Try to iterativelly add tests to the aggregator, dropping those
+that do not work. 
 
 =head1 METHODS
  
@@ -101,7 +101,7 @@ Arrayref of flat files from which each line will be pushed to C<dirs>
 
 =item * C<excludes> (optional)
 
-Arrayref of regexes to filter out tests that you want excluded.
+Arrayref of strings with regex patterns to filter out tests that you want excluded.
 
 =item * C<root> (optional)
 
@@ -116,7 +116,9 @@ test. Useful for testing modules with special namespace requirements.
 
 =item * C<package> (optional)
 
-Will package each test in its own namespace (no redefine warnings etc).
+Will package each test in its own namespace. While it will help avoid things like
+redefine warnings, it may break some tests when aggregating them, so it is disabled
+by default.
 
 =item * C<override> (optional)
 
@@ -130,9 +132,9 @@ warning if C<test_warnings> is also set).
 
 =item * C<unique> (optional)
 
-Since v0.11, duplicate tests are by default removed from the running list as that
-could mess up the stats output. You can still set it to a false value to allow
-duplicate tests in the list.
+From v0.11, duplicate tests are by default removed from the running list as that
+could mess up the stats output. You can still define it as false to allow duplicate
+tests in the list.
 
 =item * C<shuffle> (optional)
 
@@ -161,21 +163,27 @@ they are generated (for debugging etc), then leave this option disabled.
 
 =item * C<stats_output_path> (optional)
 
-C<stats_output_path> when defined specifies a path where a file with running
-time per test (average if multiple iterations are specified), starting with the
-slowest test and passing percentage gets written. On negative C<repeat> the
-stats of each successful run will be written separately instead of the averages.
+C<stats_output_path> specifies a path where a file will be created to print out
+running time per test (average if multiple iterations) and passing percentage.
+Output is sorted from slowest test to fastest. On negative C<repeat> the stats
+of each successful run will be written separately instead of the averages.
 The name of the file is C<caller_script-YYYYMMDDTHHmmss.txt>.
-If C<-> is passed instead of a path, then STDOUT will be used instead.
+If C<-> is passed instead of a path, then the output will be written to STDOUT.
 The timing stats are useful because the test harness doesn't normally measure
-time per subtest.
+time per subtest (remember, your individual aggregated tests become subtests).
 
 =item * C<extend_stats> (optional)
 
-This option is to allow for the default output of C<stats_output_path> to be
-fixed/reliable and anything added in future versions will only be written when
-C<extend_stats> is enabled.
-Currently starting date/time in ISO_8601 is added when the extend option is set.
+This option is to make the default output of C<stats_output_path> be fixed, but
+still allow additions in future versions that will only be written with the
+C<extend_stats> option enabled.
+Additions with C<extend_stats> as of current version:
+
+=over 4
+
+- starting date/time in ISO_8601.
+
+=back
 
 =back
 
@@ -297,7 +305,7 @@ sub _run_tests {
 
     my $repeat = $args->{repeat};
     $repeat = 1 if $repeat < 0;
-    my %stats;
+    my (%stats, $start);
 
     require Time::HiRes if $args->{stats_output};
 
@@ -309,7 +317,7 @@ sub _run_tests {
             warn "$test->Test2::Aggregate\n" if $args->{test_warnings};
 
             $stats{$test}{test_no} = $count unless $stats{$test}{test_no};
-            my $start = Time::HiRes::time() if $args->{stats_output};
+            $start = Time::HiRes::time() if $args->{stats_output};
             $stats{$test}{timestamp} = _timestamp();
 
             my $result = subtest $iter. "Running test $test" => sub {
@@ -400,9 +408,10 @@ returns in a script that tries to add more tests automatically to an aggregate l
 to see which added tests passed and keep them, dropping failures.
 
 The environment variable C<AGGREGATE_TESTS> will be set while the tests are running
-for your convenience. Example usage is a module that can only be loaded once, so
-you load it on the aggregated test file and then use something like this in the
-individual test files:
+for your convenience. Example usage is making a test you know cannot run under the
+aggregator check and croak if it was run under it, or a module that can only be loaded
+once, so you load it on the aggregated test file and then use something like this in
+the individual test files:
 
  eval 'use My::Module' unless $ENV{AGGREGATE_TESTS};
 
