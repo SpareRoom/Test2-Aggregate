@@ -11,7 +11,7 @@ use Test2::V0 'subtest';
 
 =head1 NAME
 
-Test2::Aggregate - Aggregate tests
+Test2::Aggregate - Aggregate tests for increased speed
 
 =head1 SYNOPSIS
 
@@ -47,7 +47,10 @@ be good or bad (e.g. redefines), depending on your requirements.
 
 Generally, the way to use this module is to try to aggregate sets of quick tests
 (e.g. unit tests). Try to iterativelly add tests to the aggregator, dropping those
-that do not work. 
+that do not work. Trying an entire suite in one go is a bad idea, an incompatible
+test can break the run failing all the subsequent tests. The module can usually
+work with C<Test::More> suites, but will have more issues than when you use the
+more modern C<Test2::Suite> (see notes).
 
 =head1 METHODS
  
@@ -97,7 +100,8 @@ true) will be processed and tests run in order specified.
 =item * C<lists> (either this or C<dirs> is required)
 
 Arrayref of flat files from which each line will be pushed to C<dirs>
-(so they have a lower precedence - note C<root> still applies).
+(so they have a lower precedence - note C<root> still applies, don't include
+it in the paths inside the list files).
 
 =item * C<excludes> (optional)
 
@@ -159,7 +163,7 @@ Tests for warnings over all the tests if set to true - this is added as a final
 test which expects zero as the number of tests which had STDERR output.
 The STDERR output of each test will be printed at the end of the test run (and
 included in the test run result hash), so if you want to see warnings the moment
-they are generated (for debugging etc), then leave this option disabled.
+they are generated leave this option disabled.
 
 =item * C<stats_output_path> (optional)
 
@@ -168,7 +172,7 @@ running time per test (average if multiple iterations) and passing percentage.
 Output is sorted from slowest test to fastest. On negative C<repeat> the stats
 of each successful run will be written separately instead of the averages.
 The name of the file is C<caller_script-YYYYMMDDTHHmmss.txt>.
-If C<-> is passed instead of a path, then the output will be written to STDOUT.
+If C<'-'> is passed instead of a path, then the output will be written to STDOUT.
 The timing stats are useful because the test harness doesn't normally measure
 time per subtest (remember, your individual aggregated tests become subtests).
 
@@ -407,14 +411,6 @@ Unit tests are usually great for aggregating. You could use the hash that C<run_
 returns in a script that tries to add more tests automatically to an aggregate list
 to see which added tests passed and keep them, dropping failures.
 
-The environment variable C<AGGREGATE_TESTS> will be set while the tests are running
-for your convenience. Example usage is making a test you know cannot run under the
-aggregator check and croak if it was run under it, or a module that can only be loaded
-once, so you load it on the aggregated test file and then use something like this in
-the individual test files:
-
- eval 'use My::Module' unless $ENV{AGGREGATE_TESTS};
-
 Trying to aggregate too many tests into a single one can be counter-intuitive as
 you would ideally want to parallelize your test suite (so a super-long aggregated
 test continuing after the rest are done will slow down the suite). And in general
@@ -426,6 +422,32 @@ even load C<run_tests> with tests that already contain another C<run_tests>, the
 only real issue with multiple calls is that if you use C<repeat < 0> on a call,
 C<Test2::Plugin::BailOnFail> is loaded so any subsequent failure, on any following
 C<run_tests> call will trigger a Bail.
+
+=head2 Test::More
+
+If you haven't switched to the C<Test2::Suite> you are generally advised to do so
+for a number of reasons, compatibility with this module being only a very minor
+one. If you are stuck with a C<Test::More> suite, C<Test2::Aggregate> can still
+probably help you more than the similarly-named C<Test::Aggregate...> modules.
+
+Although the module tries to load C<Test2> in a way to not interfere, it is generally
+better to do C<use Test::More;> in your aggregating test (i.e. alongside with
+C<use Test2::Aggregate>.
+
+One more caveat is that C<Test2::Aggregate::run_tests> uses C<subtest> from the
+C<Test2::Suite>, which on rare occasions can return a true value when a C<Test::More>
+subtest fails by running no tests, so you could have a failed test show up as
+having a 100 C<pass_perc> in the C<Test2::Aggregate::run_tests> output.
+
+=head2 $ENV{AGGREGATE_TESTS}
+
+The environment variable C<AGGREGATE_TESTS> will be set while the tests are running
+for your convenience. Example usage is making a test you know cannot run under the
+aggregator check and croak if it was run under it, or a module that can only be loaded
+once, so you load it on the aggregated test file and then use something like this in
+the individual test files:
+
+ eval 'use My::Module' unless $ENV{AGGREGATE_TESTS};
 
 =head1 AUTHOR
 
