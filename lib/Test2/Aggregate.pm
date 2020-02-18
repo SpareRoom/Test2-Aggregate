@@ -25,12 +25,11 @@ Test2::Aggregate - Aggregate tests for increased speed
 
 =head1 VERSION
 
-Version 0.11
+Version 0.11_1
 
 =cut
 
-our $VERSION = '0.11';
-
+our $VERSION = '0.11_1';
 
 =head1 DESCRIPTION
 
@@ -72,7 +71,8 @@ more modern C<Test2::Suite> (see notes).
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional
         extend_stats  => 0,                   # optional
-        test_warnings => 0                    # optional
+        test_warnings => 0,                   # optional
+        dry_run       => 0                    # optional
     );
 
 Runs the aggregate tests. Returns a hashref with stats like this:
@@ -93,15 +93,18 @@ The parameters to pass:
  
 =item * C<dirs> (either this or C<lists> is required)
 
-An arrayref containing directories which will be searched recursively,
-or even individual tests. The directories (unless C<shuffle> or C<reverse> are
-true) will be processed and tests run in order specified.
+An arrayref containing directories which will be searched recursively, or even
+individual tests. The directories (unless C<shuffle> or C<reverse> are true)
+will be processed and tests run in order specified. Test files are expected to
+end in C<.t>.
 
 =item * C<lists> (either this or C<dirs> is required)
 
-Arrayref of flat files from which each line will be pushed to C<dirs>
-(so they have a lower precedence - note C<root> still applies, don't include
-it in the paths inside the list files).
+Arrayref of flat files from which each line will be pushed to C<dirs> (so they
+have a lower precedence - note C<root> still applies, don't include it in the
+paths inside the list files). If the path does not exist, it will be silently
+ignored, however the "official" way to skip a line without checking it as a path
+is to start with a C<#> (comment).
 
 =item * C<excludes> (optional)
 
@@ -165,6 +168,11 @@ The STDERR output of each test will be printed at the end of the test run (and
 included in the test run result hash), so if you want to see warnings the moment
 they are generated leave this option disabled.
 
+=item * C<dry_run> (optional)
+
+Instead of running the tests, will do C<ok($testname)> for each one. Otherwise,
+test order, stats files etc. will be produced normally.
+
 =item * C<stats_output_path> (optional)
 
 C<stats_output_path> specifies a path where a file will be created to print out
@@ -213,7 +221,9 @@ sub run_tests {
         warn "Root '$root' does not exist, no tests are loaded."
     } else {
         foreach my $file (@{$args{lists}}) {
-            push @dirs, split(/\r?\n/, read_file("$root$file"));
+            push @dirs,
+              map { /^\s*#/ ? () : $_ }
+              split( /\r?\n/, read_file("$root$file") );
         }
 
         find(
@@ -325,8 +335,9 @@ sub _run_tests {
             $stats{$test}{timestamp} = _timestamp();
 
             my $result = subtest $iter. "Running test $test" => sub {
-                $args->{package}
-                  ? eval "package Test::$i" . '::'. "$count; do '$test';"
+                $args->{dry_run} ? Test2::V0::ok($test)
+                  : $args->{package}
+                  ? eval "package Test::$i" . '::' . "$count; do '$test';"
                   : do $test;
             };
 

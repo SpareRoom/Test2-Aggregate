@@ -1,5 +1,9 @@
 Revision history for Test2-Aggregate
 
+0.11_1  2020-02-18
+        'dry_run' option.
+        Comments in list files, POD update, test coverage.
+
 0.11    2019-12-04
         Remove duplicate tests by default, add 'unique' option.
         'excludes' option.

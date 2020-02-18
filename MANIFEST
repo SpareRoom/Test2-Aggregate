@@ -8,6 +8,7 @@ t/00-load.t
 t/bail.t
 t/dirs.t
 t/excludes.t
+t/file.t
 t/lists.t
 t/override.t
 t/package.t
