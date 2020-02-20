@@ -108,7 +108,7 @@ Arrayref of flat files from which each line will be pushed to C<dirs> (so they
 have a lower precedence - note C<root> still applies, don't include it in the
 paths inside the list files). If the path does not exist, it will be silently
 ignored, however the "official" way to skip a line without checking it as a path
-is to start with a C<#> (comment).
+is to start with a C<#> to denote a comment.
 
 =item * C<exclude> (optional)
 
@@ -132,9 +132,9 @@ test. Useful for testing modules with special namespace requirements.
 
 =item * C<package> (optional)
 
-Will package each test in its own namespace. While it will help avoid things like
-redefine warnings, it may break some tests when aggregating them, so it is disabled
-by default.
+Will package each test in its own namespace. While it may help avoid things like
+redefine warnings, from experience it doesn't often prove helpful (it may break
+tests when aggregating them), so it is disabled by default.
 
 =item * C<override> (optional)
 
@@ -153,14 +153,14 @@ From v0.11, duplicate tests are by default removed from the running list as that
 could mess up the stats output. You can still define it as false to allow duplicate
 tests in the list.
 
-=item * C<shuffle> (optional)
-
-Random order of tests if set to true. Will override C<sort>.
-
 =item * C<sort> (optional)
 
 Sort tests alphabetically if set to true. Provides a way to fix the test order
 across systems.
+
+=item * C<shuffle> (optional)
+
+Random order of tests if set to true. Will override C<sort>.
 
 =item * C<reverse> (optional)
 
@@ -181,11 +181,11 @@ they are generated leave this option disabled.
 =item * C<dry_run> (optional)
 
 Instead of running the tests, will do C<ok($testname)> for each one. Otherwise,
-test order, stats files etc. will be produced normally.
+test order, stats files etc. will be produced (as if all tests passed).
 
 =item * C<pre_eval> (optional)
 
-String with code to pass to eval before each test. You might be inclined to do
+String with code to run with eval before each test. You might be inclined to do
 this for example:
 
   pre_eval => "no warnings 'redefine';"
@@ -193,7 +193,7 @@ this for example:
 You might expect it to silence redefine warnings (when you have similarly named
 subs on many tests), but even if you don't set warnings explicitly in your tests,
 most test bundles will set warnings automatically for you (e.g. for L<Test2::V0>
-you'd have to do C<use Test2::V0 -no_warnings => 1;> to avoid it).
+you'd have to do C<use Test2::V0 -no_warnings =E<gt> 1;> to avoid it).
 
 =item * C<stats_output> (optional)
 
@@ -469,7 +469,7 @@ probably help you more than the similarly-named C<Test::Aggregate...> modules.
 
 Although the module tries to load C<Test2> with minimal imports to not interfere,
 it is generally better to do C<use Test::More;> in your aggregating test (i.e.
-alongside with C<use Test2::Aggregate>.
+alongside with C<use Test2::Aggregate>).
 
 One more caveat is that C<Test2::Aggregate::run_tests> uses C<subtest> from the
 L<Test2::Suite>, which on rare occasions can return a true value when a L<Test::More>
@@ -486,8 +486,20 @@ the individual test files:
 
  eval 'use My::Module' unless $ENV{AGGREGATE_TESTS};
 
+If you have a custom test bundle, you could use the variable to do things like
+disable warnings on redefines only for tests that run aggregated:
+
+ use Import::Into;
+
+ sub import {
+    ...
+    'warnings'->unimport::out_of($package, 'redefine')
+        if $ENV{AGGREGATE_TESTS};
+ }
+
 You can also make a test abort/die if you know it should not be aggregated by
 checking the variable.
+
 
 =head1 AUTHOR
 
@@ -498,7 +510,8 @@ Dimitrios Kechagias, C<< <dkechag at cpan.org> >>
 Please report any bugs or feature requests to C<bug-test2-aggregate at rt.cpan.org>,
 or through the web interface at L<https://rt.cpan.org/NoAuth/ReportBug.html?Queue=Test2-Aggregate>.
 I will be notified, and then you'll automatically be notified of progress on your
-bug as I make changes.
+bug as I make changes. You could also submit issues or even pull requests to the
+github repo (see below).
 
 =head1 GIT
 
