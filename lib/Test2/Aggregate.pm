@@ -497,9 +497,8 @@ disable warnings on redefines only for tests that run aggregated:
         if $ENV{AGGREGATE_TESTS};
  }
 
-You can also make a test abort/die if you know it should not be aggregated by
-checking the variable.
-
+Another idea is to make the test die when it is run under the aggregator, if, at
+design time, you know it is not supposed to run aggregated.
 
 =head1 AUTHOR
 
