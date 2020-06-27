@@ -16,6 +16,7 @@ Test2::Aggregate - Aggregate tests for increased speed
 =head1 SYNOPSIS
 
     use Test2::Aggregate;
+    use Test2::V0; # Or 'use Test::More' etc if your suite uses an other framework
 
     Test2::Aggregate::run_tests(
         dirs => \@test_dirs
@@ -25,11 +26,11 @@ Test2::Aggregate - Aggregate tests for increased speed
 
 =head1 VERSION
 
-Version 0.12
+Version 0.13
 
 =cut
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 =head1 DESCRIPTION
 
@@ -47,11 +48,11 @@ be good or bad (e.g. redefines), depending on your requirements.
 
 Generally, the way to use this module is to try to aggregate sets of quick tests
 (e.g. unit tests). Try to iterativelly add tests to the aggregator, dropping those
-that do not work. Trying an entire suite in one go is a bad idea, an incompatible
-test can break the run failing all the subsequent tests (especially when doing
-things like globally redefining built-ins etc). The module can usually work with
-L<Test::More> suites, but will have more issues than when you use the more modern
-L<Test2::Suite> (see notes).
+that do not work. You can use plain text file lists for this. Trying an entire suite
+in one go is a bad idea, an incompatible test can break the run making the subsequent
+tests fail (especially when doing things like globally redefining built-ins etc).
+The module can work with L<Test::More> suites, but you will have less issues
+with L<Test2::Suite> (see notes).
 
 =head1 METHODS
  
@@ -75,6 +76,7 @@ L<Test2::Suite> (see notes).
         stats_output  => $stats_output_path,  # optional
         extend_stats  => 0,                   # optional
         test_warnings => 0,                   # optional
+        allow_errors  => 0,                   # optional
         pre_eval      => $code_to_eval,       # optional
         dry_run       => 0                    # optional
     );
@@ -106,9 +108,12 @@ end in C<.t>.
 
 Arrayref of flat files from which each line will be pushed to C<dirs> (so they
 have a lower precedence - note C<root> still applies, don't include it in the
-paths inside the list files). If the path does not exist, it will be silently
-ignored, however the "official" way to skip a line without checking it as a path
-is to start with a C<#> to denote a comment.
+paths inside the list files). If the path does not exist, it will currently be
+silently ignored, however the "official" way to skip a line without checking it
+as a path is to start with a C<#> to denote a comment.
+
+This option is nicely combined with the C<--exclude-list> option of C<yath> (the
+L<Test2::Harness>) to skip the individual runs of the tests you aggregated.
 
 =item * C<exclude> (optional)
 
@@ -133,8 +138,8 @@ test. Useful for testing modules with special namespace requirements.
 =item * C<package> (optional)
 
 Will package each test in its own namespace. While it may help avoid things like
-redefine warnings, from experience it doesn't often prove helpful (it may break
-tests when aggregating them), so it is disabled by default.
+redefine warnings, from experience, it can break some tests, so it is disabled
+by default.
 
 =item * C<override> (optional)
 
@@ -177,6 +182,12 @@ test which expects zero as the number of tests which had STDERR output.
 The STDERR output of each test will be printed at the end of the test run (and
 included in the test run result hash), so if you want to see warnings the moment
 they are generated leave this option disabled.
+
+=item * C<allow_errors> (optional)
+
+If enabled, it will allow errors that exit tests prematurely (so they may return
+a pass if one of their subtests had passed). The option is available to enable
+old behaviour (version <= 0.12), before the module stopped allowing this.
 
 =item * C<dry_run> (optional)
 
@@ -358,13 +369,20 @@ sub _run_tests {
             $start = Time::HiRes::time() if $args->{stats_output};
             $stats{$test}{timestamp} = _timestamp();
 
+            my $exec_error;
             my $result = subtest $iter. "Running test $test" => sub {
                 eval $args->{pre_eval} if $args->{pre_eval};
 
-                $args->{dry_run} ? Test2::V0::ok($test)
-                  : $args->{package}
-                  ? eval "package Test::$i" . '::' . "$count; do '$test';"
-                  : do $test;
+                if ($args->{dry_run}) {
+                    Test2::V0::ok($test);
+                } else {
+                    $args->{package}
+                        ? eval "package Test::$i" . '::' . "$count; do '$test';"
+                        : do $test;
+                    $exec_error = $@;
+                }
+                Test2::V0::is($exec_error, '', 'Execution should not fail/warn')
+                        if !$args->{allow_errors} && $exec_error;
             };
 
             warn "<-Test2::Aggregate\n" if $args->{test_warnings};
@@ -446,7 +464,13 @@ the end of the test etc.
 
 Unit tests are usually great for aggregating. You could use the hash that C<run_tests>
 returns in a script that tries to add more tests automatically to an aggregate list
-to see which added tests passed and keep them, dropping failures.
+to see which added tests passed and keep them, dropping failures. An example of
+how to print out the passing tests in the order they ran from the C<$stats> hashref
+that C<run_tests> returns:
+
+ foreach (sort {$stats->{$a}->{test_no} <=> $stats->{$b}->{test_no}} keys %$stats) {
+     print $fh "$_\n" if $stats->{$_}->{pass_perc};
+ }
 
 Trying to aggregate too many tests into a single one can be counter-intuitive as
 you would ideally want to parallelize your test suite (so a super-long aggregated
@@ -471,10 +495,27 @@ Although the module tries to load C<Test2> with minimal imports to not interfere
 it is generally better to do C<use Test::More;> in your aggregating test (i.e.
 alongside with C<use Test2::Aggregate>).
 
-One more caveat is that C<Test2::Aggregate::run_tests> uses C<subtest> from the
-L<Test2::Suite>, which on rare occasions can return a true value when a L<Test::More>
-subtest fails by running no tests, so you could have a failed test show up as
-having a 100 C<pass_perc> in the C<Test2::Aggregate::run_tests> output.
+=head2 BEGIN / END Blocks
+
+C<BEGIN> / C<END> blocks will run at the start/end of each test and any overrides
+etc you might have set will apply to the rest of the tests, so if you use them you
+probably need to make changes for aggregation. An example of such a change is when
+you have a C<*GLOBAL::CORE::exit> override to test scripts that can call C<exit()>.
+A solution is to use something like L<Test::Trap>: 
+
+ BEGIN {
+     unless ($Test::Trap::VERSION) { # Avoid warnings for multiple loads in aggregation
+         require Test::Trap;
+         Test::Trap->import();
+     }
+ }
+
+=head2 Test::Class
+
+L<Test::Class> is sort of an aggregator itself. You make your tests into modules
+and then load them on the same C<.t> file, so ideally you will not end up with many
+C<.t> files that would require further aggregation. If you do, due to the L<Test::Class>
+implementation specifics, those C<.t> files won't run under L<Test2::Aggregator>.
 
 =head2 $ENV{AGGREGATE_TESTS}
 
