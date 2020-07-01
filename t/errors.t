@@ -23,7 +23,7 @@ is(
     array {
         fail_events Subtest => sub {
             call pass => 0;
-            call name => 'Running test xt/failing/error.t';
+            call name => match(qr'Running test .*failing/error.t');
         };
         end;
     },
