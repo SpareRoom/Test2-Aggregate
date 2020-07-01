@@ -544,12 +544,12 @@ design time, you know it is not supposed to run aggregated.
 
 There are many approaches you could do to use C<Test2::Aggregate> with an existing
 test suite, so for example you can start by making a list of the test files you
-want to try and aggregate:
+are trying to aggregate:
 
  find t -name '*.t' > all.lst
 
-If you have a substantial test suite, perhaps try with a portion of it (subdir?)
-instead of the entire suite. Try running them aggregated like this:
+If you have a substantial test suite, perhaps try with a portion of it (a subdir?)
+instead of the entire suite. In any case, try running them aggregated like this:
 
  use Test2::Aggregate;
  use Test2::V0; # Or Test::More;
@@ -567,20 +567,23 @@ instead of the entire suite. Try running them aggregated like this:
  done_testing();
 
 Run the above with C<prove> or C<yath> in verbose mode, so that in case the run
-hangs, you can see where it did so and edit C<all.lst>.
+hangs (it can happen), you can see where it did so and edit C<all.lst> removing
+the offending test.
 
-If the run completes, you have a starting point in C<pass.lst>. You can try adding
-back some of the failed tests - test failures can be cascading, so some might be
-passing, or have small issues you can fix.
+If the run completes, you have a "starting point" - i.e. a list that can run under
+the aggregator in C<pass.lst>.
+You can try adding back some of the failed tests - test failures can be cascading,
+so some might be passing if added back, or have small issues you can address.
 
-Try adding C<test_warnings =E<gt> 1> to C<run_tests> to fix warnings as well.
+Try adding C<test_warnings =E<gt> 1> to C<run_tests> to fix warnings as well, unless
+it is common for your tests to have C<STDERR> output.
 
 To have your entire suite run aggregated tests together once and not repeat them
 along with the other, non-aggregated, tests, it is a good idea to use the
 C<--exclude-list> option of the C<Test2::Harness>.
 
-Hopefully your tests can run in parallel, in which case you would split your
-aggregated tests into multiple lists to take advantage of multiple cores etc.
+Hopefully your tests can run in parallel (C<prove/yath -j>), in which case you
+would split your aggregated tests into multiple lists to have them run in parallel.
 Here is an example of a wrapper around C<yath>, to easily handle multiple lists:
 
  BEGIN {
@@ -599,8 +602,8 @@ Here is an example of a wrapper around C<yath>, to easily handle multiple lists:
  exec ('yath', @ARGV);
 
 You would call it with something like C<--exclude-lists=t/aggregate/*.lst>, and
-the tests listed will be excluded (you will have them running aggregated in their
-own C<.t> files using L<Test2::Aggregate>).
+the tests listed will be excluded (you will have them running aggregated through
+their own C<.t> files using L<Test2::Aggregate>).
 
 =head1 AUTHOR
 
