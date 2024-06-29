@@ -6,7 +6,8 @@ agg - Test2::Aggregate harness wrapper
 
 =head1 DESCRIPTION
 
-Pass Perl test files/directories and they will run aggregated via yath or prove.
+Pass a list of Perl test files/directories and they will run aggregated via yath
+(or prove if specified).
 
 It is useful either to speed up a test run for tests you know can be aggregated,
 or to check whether specific tests can pass under Test2::Aggregate.

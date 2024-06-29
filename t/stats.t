@@ -9,7 +9,7 @@ my $pattrn = 'stats.t.*txt';
 my $tmpdir = File::Temp->newdir;
 
 plan skip_all => "Cannot create temp directory" unless -e $tmpdir;
-plan(12);
+plan(15);
 
 foreach my $extend (0 .. 1) {
     stdout_like(sub {
@@ -24,6 +24,18 @@ foreach my $extend (0 .. 1) {
         "Valid stats output for extended = $extend"
     );
 }
+
+stdout_like(sub {
+        Test2::Aggregate::run_tests(
+            dirs         => ['xt/aggregate'],
+            root         => $root,
+            stats_output => '-',
+            pass_only    => 1
+        )
+    },
+    qr/^(?:\S*\n)+$/,
+    "Valid stats output for pass_only"
+);
 
 Test2::Aggregate::run_tests(
     dirs         => ['xt/aggregate'],
