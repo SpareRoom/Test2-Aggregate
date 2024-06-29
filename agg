@@ -1,0 +1,120 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+agg - Test2::Aggregate harness wrapper
+
+=head1 DESCRIPTION
+
+Pass Perl test files/directories and they will run aggregated via yath or prove.
+
+It is useful either to speed up a test run for tests you know can be aggregated,
+or to check whether specific tests can pass under Test2::Aggregate.
+
+=head1 SYNOPSIS
+
+ agg [options] <file/dir ...>
+
+ Options:
+ --out <s>,          -o <s> : Specify the test file to be created (tmp file by default).
+ --prove,            -p     : Force prove (default is yath if detected).
+ --verbose,          -v     : Verbose (passed to yath/prove)
+ --include <s>,      -I <s> : Library paths to include.
+ --test_warnings,    -w     : Fail tests on warnings.
+ --test_bundle <s>,  -t     : Test bundle (default: Test2::V0). Can be comma-separated list.
+ --pass_list <s>,    -l <s> : Output directory for list of 100% passing tests.
+ --stats_output <s>, -s <s> : Stats output directory (does not combine with pass_list).
+ --help              -h     : Show basic help and exit.
+
+=cut
+
+use strict;
+use warnings;
+
+use lib 'lib';
+
+use Cwd;
+use File::Temp 'tempfile';
+use Getopt::Long;
+use Path::Tiny;
+use Pod::Usage;
+
+my %opt = (framework => 'Test2::V0');
+GetOptions(
+    \%opt,
+    'help|h',
+    'include|I=s',
+    'out|o=s',
+    'pass_list|l=s',
+    'prove|p',
+    'stats_output|s=s',
+    'test_bundle|t=s',
+    'test_warnings|w',
+    'verbose|v',
+);
+
+pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
+    if $opt{help} || !@ARGV;
+
+$opt{test_bundle} ||= 'Test2::V0';
+$opt{stats_output} = $opt{pass_list} if $opt{pass_list};
+
+unless ($opt{prove}) {
+    my $res = `which yath`;
+    $opt{prove} = 1 unless $res;
+}
+
+my $file = $opt{out} ? path($opt{out}) : Path::Tiny->tempfile(
+    TEMPLATE => "aggXXXXXX",
+    SUFFIX   => '.t',
+    UNLINK   => 0
+);
+
+print "Writing output to $file\n" if $opt{verbose};
+
+my $cwd  = getcwd();
+my $code = test_bundle_use($opt{test_bundle});
+
+$code .= "
+use Test2::Aggregate;
+
+my \$stats = Test2::Aggregate::run_tests(
+";
+$code .= "\ttest_warnings => 1,\n" if $opt{test_warnings};
+$code .= "\tstats_output => '$opt{stats_output}',\n" if $opt{stats_output};
+$code .= "\tpass_only => 1,\n" if $opt{pass_only};
+$code .= "\tdirs => [\n";
+$code .= join(",\n", map {"'$_'"} normalize_paths($cwd, @ARGV));
+$code .= "\n\t],
+);
+done_testing();
+";
+
+$file->spew_utf8($code);
+
+my $cmd  = $opt{prove} ? 'prove' : 'yath';
+my @args = ($file);
+unshift @args, '-v'              if $opt{verbose};
+unshift @args, "-I$opt{include}" if $opt{include};
+unshift @args, 'test' unless $opt{prove};
+
+exec($cmd, @args);
+
+sub test_bundle_use {
+    my @modules = split /,/, shift;
+    my $str     = '';
+    $str .= "use $_;\n" for @modules;
+    return $str;
+}
+
+sub normalize_paths {
+    my $cwd   = shift;
+    my @paths = @_;
+    my @norm;
+
+    $cwd =~ s#/?$#/#;
+
+    push @norm, (substr($_, 0, 1) eq '/' ? $_ : "$cwd$_") for @paths;
+
+    return @norm;
+}

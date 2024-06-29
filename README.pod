@@ -219,7 +219,7 @@ the output to C</dev/null>, C</tmp> etc).
 
 =item * C<extend_stats> (optional)
 
-This option exist to make the default output format of C<stats_output> be fixed,
+This option exists to make the default output format of C<stats_output> be fixed,
 but still allow additions in future versions that will only be written with the
 C<extend_stats> option enabled.
 Additions with C<extend_stats> as of the current version:

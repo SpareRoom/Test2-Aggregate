@@ -79,6 +79,7 @@ have less issues with L<Test2::Suite> (see notes).
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional
         extend_stats  => 0,                   # optional
+        pass_only     => 0,                   # optional
         test_warnings => 0,                   # optional
         allow_errors  => 0,                   # optional
         pre_eval      => $code_to_eval,       # optional
@@ -238,6 +239,11 @@ This option exist to make the default output format of C<stats_output> be fixed,
 but still allow additions in future versions that will only be written with the
 C<extend_stats> option enabled.
 Additions with C<extend_stats> as of the current version:
+
+=item * C<pass_only> (optional)
+
+Modifies C<stats_output> by making it only print out a list of passing tests.
+Useful for creating lists of aggregateable tests.
 
 =over 4
 
@@ -449,16 +455,20 @@ sub _print_stats {
 
     my $total = 0;
     my $extra = $args->{extend_stats} ? ' TIMESTAMP' : '';
-    print $fh "TIME PASS%$extra TEST\n";
+    print $fh "TIME PASS%$extra TEST\n" unless $args->{pass_only};
 
     foreach my $test (sort {$stats->{$b}->{time}<=>$stats->{$a}->{time}} keys %$stats) {
+        if ($args->{pass_only}) {
+            print $fh "$test\n" if $stats->{$test}->{pass_perc} > 99;
+            next;
+        }
         $extra = ' '.$stats->{$test}->{timestamp} if $args->{extend_stats};
         $total += $stats->{$test}->{time};
         printf $fh "%.2f %d$extra $test\n",
             $stats->{$test}->{time}, $stats->{$test}->{pass_perc};
     }
 
-    printf $fh "TOTAL TIME: %.1f sec\n", $total;
+    printf $fh "TOTAL TIME: %.1f sec\n", $total unless $args->{pass_only};
     close $fh unless $args->{stats_output} =~ /^-$/;
 }
 
