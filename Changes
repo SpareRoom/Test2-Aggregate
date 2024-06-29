@@ -1,5 +1,10 @@
 Revision history for Test2-Aggregate
 
+0.18    2024-06-29
+        agg helper script.
+        'pass_only' option.
+        Write stats per test file (repeat==1) to avoid losing them on SIG exit.
+
 0.17    2022-02-10
         Ignore empty lines in list files.
 

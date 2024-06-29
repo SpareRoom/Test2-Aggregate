@@ -15,7 +15,7 @@ Test2::Aggregate - Aggregate tests for increased speed
 
 =head1 VERSION
 
-Version 0.17
+Version 0.18
 
 =head1 DESCRIPTION
 
@@ -64,6 +64,7 @@ have less issues with L<Test2::Suite> (see notes).
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional
         extend_stats  => 0,                   # optional
+        pass_only     => 0,                   # optional
         test_warnings => 0,                   # optional
         allow_errors  => 0,                   # optional
         pre_eval      => $code_to_eval,       # optional
@@ -219,10 +220,16 @@ the output to C</dev/null>, C</tmp> etc).
 
 =item * C<extend_stats> (optional)
 
-This option exists to make the default output format of C<stats_output> be fixed,
+This option exist to make the default output format of C<stats_output> be fixed,
 but still allow additions in future versions that will only be written with the
 C<extend_stats> option enabled.
 Additions with C<extend_stats> as of the current version:
+
+=item * C<pass_only> (optional)
+
+Modifies C<stats_output> by making it only print out a list of passing tests.
+Useful for creating lists of aggregateable tests.
+Has no effect if C<stats_output> is not defined.
 
 =over 4
 
@@ -315,47 +322,67 @@ disable warnings on redefines only for tests that run aggregated:
 Another idea is to make the test die when it is run under the aggregator, if, at
 design time, you know it is not supposed to run aggregated.
 
+=head2 agg helper script
+
+ agg [options] <file/dir ...>
+
+Pass a list of Perl test files/directories and they will run aggregated via yath
+(or prove if specified).
+
+ Options:
+ --out <s>,          -o <s> : Specify the test file to be created (tmp file by default).
+ --prove,            -p     : Force prove (default is yath if detected).
+ --verbose,          -v     : Verbose (passed to yath/prove)
+ --include <s>,      -I <s> : Library paths to include.
+ --test_warnings,    -w     : Fail tests on warnings.
+ --test_bundle <s>,  -t     : Test bundle (default: Test2::V0). Can be comma-separated list.
+ --pass_list <s>,    -l <s> : Output directory for list of 100% passing tests.
+ --stats_output <s>, -s <s> : Stats output directory (does not combine with pass_list).
+ --help              -h     : Show basic help and exit.
+
 =head2 Example aggregating strategy
 
 There are many approaches you could do to use C<Test2::Aggregate> with an existing
-test suite, so for example you can start by making a list of the test files you
-are trying to aggregate:
+test suite, usually involving an iterative process of trying to run several tests
+aggregated, seeing if you can fix the failing ones, otherwise you remove them from
+the aggregation etc.
 
- find t -name '*.t' > all.lst
+This process can be done with the help of the C<agg> script. For example, to try
+all tests under C<t/> aggregated and a list of passing tests put under the C<pass>
+directory you would do:
 
-If you have a substantial test suite, perhaps try with a portion of it (a subdir?)
-instead of the entire suite. In any case, try running them aggregated like this:
+ > agg -p pass t
 
- use Test2::Aggregate;
- use Test2::V0; # Or Test::More;
+If the run completes, you have a "starting point" - i.e. a .txt list that can run
+under the aggregator with the C<lists> option:
 
- my $stats = Test2::Aggregate::run_tests(
-    lists => ['all.lst'],
+ Test2::Aggregate::run_tests(
+     lists => ['pass/name_of_file.txt']
  );
 
- open OUT, ">pass.lst";
- foreach my $test (sort {$stats->{$a}->{test_no} <=> $stats->{$b}->{test_no}} keys %$stats) {
-     print OUT "$test\n" if $stats->{$test}->{pass_perc};
- }
- close OUT;
+If the run does not complete (e.g. signal 11 on some test), try fewer tests by
+choosing just a subdirectory. If that's not possible, you'll probably have to go
+to the more manual method of getting a full list of your tests
+(C<find t -name '*.t' E<gt> all.lst>) then trying to run parts of it, again with
+the C<lists> option.
 
- done_testing();
-
-Run the above with C<prove> or C<yath> in verbose mode, so that in case the run
-hangs (it can happen), you can see where it did so and edit C<all.lst> removing
-the offending test.
-
-If the run completes, you have a "starting point" - i.e. a list that can run under
-the aggregator in C<pass.lst>.
-You can try adding back some of the failed tests - test failures can be cascading,
-so some might be passing if added back, or have small issues you can address.
+After you have a starting point, you can try see if there is an obvious reason some
+tests fail and address it to add them back to the pass list. You can even try adding
+back some of the failed tests that were not among the first to fail - test failures
+can sometimes be cascading, so some might be passing if added back, or have small
+issues you can address.
 
 Try adding C<test_warnings =E<gt> 1> to C<run_tests> to fix warnings as well, unless
 it is common for your tests to have C<STDERR> output.
 
-To have your entire suite run aggregated tests together once and not repeat them
-along with the other, non-aggregated, tests, it is a good idea to use the
-C<--exclude-list> option of the C<Test2::Harness>.
+In the end, you will end up with part of your tests aggregated in (multiple if you
+want to run them in parallel) list files, with the rest of your tests to be run
+non-aggregated.
+
+You don't actually have to move and separate aggregated/non-aggregated files when
+using lists, you can still have your entire suite run the aggregated tests once and
+not repeat them along with the other, non-aggregated tests, by taking advantage of
+the C<--exclude-list> option of the C<Test2::Harness>.
 
 Hopefully your tests can run in parallel (C<prove/yath -j>), in which case you
 would split your aggregated tests into multiple lists to have them run in parallel.

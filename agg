@@ -83,7 +83,7 @@ my \$stats = Test2::Aggregate::run_tests(
 ";
 $code .= "\ttest_warnings => 1,\n" if $opt{test_warnings};
 $code .= "\tstats_output => '$opt{stats_output}',\n" if $opt{stats_output};
-$code .= "\tpass_only => 1,\n" if $opt{pass_only};
+$code .= "\tpass_only => 1,\n" if $opt{pass_list};
 $code .= "\tdirs => [\n";
 $code .= join(",\n", map {"'$_'"} normalize_paths($cwd, @ARGV));
 $code .= "\n\t],

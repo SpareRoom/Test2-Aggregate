@@ -244,6 +244,7 @@ Additions with C<extend_stats> as of the current version:
 
 Modifies C<stats_output> by making it only print out a list of passing tests.
 Useful for creating lists of aggregateable tests.
+Has no effect if C<stats_output> is not defined.
 
 =over 4
 
@@ -374,14 +375,15 @@ sub _process_warnings {
 }
 
 sub _run_tests {
-    my $tests  = shift;
-    my $args   = shift;
+    my $tests = shift;
+    my $args  = shift;
 
     my $repeat = $args->{repeat};
     $repeat = 1 if $repeat < 0;
     my (%stats, $start);
 
     require Time::HiRes if $args->{stats_output};
+    my $fh = _stats_fh($args);
 
     for my $i (1 .. $repeat) {
         my $iter = $repeat > 1 ? "Iter: $i/$repeat - " : '';
@@ -416,10 +418,19 @@ sub _run_tests {
                 if $args->{stats_output};
             $stats{$test}{pass_perc} += $result ? 100/$repeat : 0;
             $count++;
+
+            # If we have single iteration, no need to collect stats so write
+            # per line to avoid losing them in case of SIG
+            _print_stats($fh, \%stats, $args, $test)
+                if $args->{stats_output} && $repeat == 1;
         }
     }
 
-    _print_stats(\%stats, $args) if $args->{stats_output};
+    if ($args->{stats_output}) {
+        # Write all stats for many iterations
+        _print_stats($fh, \%stats, $args) if $repeat > 1;
+        _close_stats($fh, $args);
+    }
     $args->{stats} = \%stats;
 }
 
@@ -434,8 +445,10 @@ sub _override {
     return $override;
 }
 
-sub _print_stats {
-    my ($stats, $args) = @_;
+sub _stats_fh {
+    my $args = shift;
+
+    return unless $args->{stats_output};
 
     unless (-e $args->{stats_output}) {
         my @create = mkpath($args->{stats_output});
@@ -453,23 +466,41 @@ sub _print_stats {
         open($fh, '>', $file) or die "Can't open > $file: $!";
     }
 
-    my $total = 0;
+    $args->{total_time} = 0;
     my $extra = $args->{extend_stats} ? ' TIMESTAMP' : '';
     print $fh "TIME PASS%$extra TEST\n" unless $args->{pass_only};
 
-    foreach my $test (sort {$stats->{$b}->{time}<=>$stats->{$a}->{time}} keys %$stats) {
+    return $fh;
+}
+
+sub _close_stats {
+    my ($fh, $args) = @_;
+
+    return unless $fh;
+
+    printf $fh "TOTAL TIME: %.1f sec\n", $args->{total_time}
+        unless $args->{pass_only};
+    close $fh unless $args->{stats_output} =~ /^-$/;
+}
+
+sub _print_stats {
+    my ($fh, $stats, $args, $test) = @_;
+
+    return unless $fh;
+
+    my @tests = $test ? $test : keys %$stats;
+    my $extra = '';
+
+    foreach my $test (sort {$stats->{$b}->{time}<=>$stats->{$a}->{time}} @tests) {
         if ($args->{pass_only}) {
             print $fh "$test\n" if $stats->{$test}->{pass_perc} > 99;
             next;
         }
         $extra = ' '.$stats->{$test}->{timestamp} if $args->{extend_stats};
-        $total += $stats->{$test}->{time};
+        $args->{total_time} += $stats->{$test}->{time};
         printf $fh "%.2f %d$extra $test\n",
             $stats->{$test}->{time}, $stats->{$test}->{pass_perc};
     }
-
-    printf $fh "TOTAL TIME: %.1f sec\n", $total unless $args->{pass_only};
-    close $fh unless $args->{stats_output} =~ /^-$/;
 }
 
 sub _uniq {
@@ -603,10 +634,11 @@ under the aggregator with the C<lists> option:
      lists => ['pass/name_of_file.txt']
  );
 
-If the run does not complete, try fewer tests by choosing just a subdirectory. If
-that's not possible, you'll probably have to go to the more manual method of getting
-a full list of your tests (C<find t -name '*.t' E<gt> all.lst>) then trying to run
-parts of it, again with the C<lists> option.
+If the run does not complete (e.g. signal 11 on some test), try fewer tests by
+choosing just a subdirectory. If that's not possible, you'll probably have to go
+to the more manual method of getting a full list of your tests
+(C<find t -name '*.t' E<gt> all.lst>) then trying to run parts of it, again with
+the C<lists> option.
 
 After you have a starting point, you can try see if there is an obvious reason some
 tests fail and address it to add them back to the pass list. You can even try adding
