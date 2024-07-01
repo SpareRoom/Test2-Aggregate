@@ -14,18 +14,23 @@ or to check whether specific tests can pass under Test2::Aggregate.
 
 =head1 SYNOPSIS
 
- agg [options] <file/dir ...>
+ agg [options] <file/dir1 ...>
 
  Options:
- --out <s>,          -o <s> : Specify the test file to be created (tmp file by default).
- --prove,            -p     : Force prove (default is yath if detected).
- --verbose,          -v     : Verbose (passed to yath/prove)
- --include <s>,      -I <s> : Library paths to include.
- --test_warnings,    -w     : Fail tests on warnings.
- --test_bundle <s>,  -t     : Test bundle (default: Test2::V0). Can be comma-separated list.
- --pass_list <s>,    -l <s> : Output directory for list of 100% passing tests.
- --stats_output <s>, -s <s> : Stats output directory (does not combine with pass_list).
- --help              -h     : Show basic help and exit.
+ --out <s>,          -o <s>  : Specify the test file to be created (tmp file by default).
+ --lists,            -l      : Use files specified as lists.
+ --prove,            -p      : Force prove (default is yath/Test2 if detected).
+ --verbose,          -v      : Verbose (passed to yath/prove)
+ --absolute,         -a      : Use absolute paths in generated files.
+ --include <s>,      -I <s>  : Library paths to include.
+ --test_warnings,    -w      : Fail tests on warnings.
+ --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Can be comma-separated list.
+ --pass_output <s>,  -po <s> : Output directory for list of 100% passing tests.
+ --reverse                   : Reverse the test order.
+ --shuffle                   : Shuffle the test order.
+ --sort                      : Run the tests alphabetically.
+ --stats_output <s>, -so <s> : Stats output directory (does not combine with pass_output).
+ --help              -h      : Show basic help and exit.
 
 =cut
 
@@ -46,9 +51,13 @@ GetOptions(
     'help|h',
     'include|I=s',
     'out|o=s',
-    'pass_list|l=s',
+    'lists|l',
+    'pass_output|po=s',
     'prove|p',
-    'stats_output|s=s',
+    'reverse',
+    'shuffle',
+    'sort',
+    'stats_output|so=s',
     'test_bundle|t=s',
     'test_warnings|w',
     'verbose|v',
@@ -57,12 +66,12 @@ GetOptions(
 pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
     if $opt{help} || !@ARGV;
 
-$opt{test_bundle} ||= 'Test2::V0';
-$opt{stats_output} = $opt{pass_list} if $opt{pass_list};
+$opt{test_bundle} ||= $opt{prove} ? 'Test::More' : 'Test2::V0';
+$opt{stats_output} = $opt{pass_output} if $opt{pass_output};
 
 unless ($opt{prove}) {
-    my $res = `which yath`;
-    $opt{prove} = 1 unless $res;
+    eval "use Test2::Harness";
+    $opt{prove} = 1 if $@;
 }
 
 my $file = $opt{out} ? path($opt{out}) : Path::Tiny->tempfile(
@@ -83,9 +92,14 @@ my \$stats = Test2::Aggregate::run_tests(
 ";
 $code .= "\ttest_warnings => 1,\n" if $opt{test_warnings};
 $code .= "\tstats_output => '$opt{stats_output}',\n" if $opt{stats_output};
-$code .= "\tpass_only => 1,\n" if $opt{pass_list};
-$code .= "\tdirs => [\n";
-$code .= join(",\n", map {"'$_'"} normalize_paths($cwd, @ARGV));
+$code .= "\tpass_only => 1,\n" if $opt{pass_output};
+$code .= "\treverse => 1,\n" if $opt{reverse};
+$code .= "\tshuffle => 1,\n" if $opt{shuffle};
+$code .= "\tsort => 1,\n" if $opt{sort};
+$code .= "\troot => '$cwd',\n\t";
+$code .= $opt{lists} ? "lists" : "dirs";
+$code .= " => [\n";
+$code .= join(",\n", map {"'$_'"} absolute_paths($cwd, $opt{absolute}, @ARGV));
 $code .= "\n\t],
 );
 done_testing();
@@ -108,8 +122,11 @@ sub test_bundle_use {
     return $str;
 }
 
-sub normalize_paths {
-    my $cwd   = shift;
+sub absolute_paths {
+    my $cwd  = shift;
+    my $abs  = shift;
+    return @_ unless $abs;
+
     my @paths = @_;
     my @norm;
 
