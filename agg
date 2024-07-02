@@ -19,9 +19,10 @@ or to check whether specific tests can pass under Test2::Aggregate.
  Options:
  --out <s>,          -o <s>  : Specify the test file to be created (tmp file by default).
  --lists,            -l      : Use files specified as lists.
- --prove,            -p      : Force prove (default is yath/Test2 if detected).
+ --prove,            -p      : Force prove (default is yath/Test2 if installed).
  --verbose,          -v      : Verbose (passed to yath/prove)
- --absolute,         -a      : Use absolute paths in generated files.
+ --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
+ --root <s>          -r <s>  : Define a custom root dir (default is current dir).
  --include <s>,      -I <s>  : Library paths to include.
  --test_warnings,    -w      : Fail tests on warnings.
  --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Can be comma-separated list.
@@ -39,6 +40,7 @@ use warnings;
 
 use lib 'lib';
 
+use Carp;
 use Cwd;
 use File::Temp 'tempfile';
 use Getopt::Long;
@@ -48,13 +50,15 @@ use Pod::Usage;
 my %opt = (framework => 'Test2::V0');
 GetOptions(
     \%opt,
+    'absolute|a',
     'help|h',
     'include|I=s',
-    'out|o=s',
     'lists|l',
+    'out|o=s',
     'pass_output|po=s',
     'prove|p',
     'reverse',
+    'root|r=s',
     'shuffle',
     'sort',
     'stats_output|so=s',
@@ -69,6 +73,18 @@ pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
 $opt{test_bundle} ||= $opt{prove} ? 'Test::More' : 'Test2::V0';
 $opt{stats_output} = $opt{pass_output} if $opt{pass_output};
 
+if ($opt{root}) {
+    $opt{absolute} = undef;
+    croak "Specified --root does not exist" unless -e $opt{root};
+    my $slash = '';
+    $slash = '/' unless $opt{root} =~ m#/$#;
+    foreach (@ARGV) {
+        croak "$opt{root}$slash$_ doesn't exist" unless -e "$opt{root}$slash$_";
+    }
+} elsif (!$opt{absolute}) {
+    $opt{root} = "./";
+}
+
 unless ($opt{prove}) {
     eval "use Test2::Harness";
     $opt{prove} = 1 if $@;
@@ -82,7 +98,7 @@ my $file = $opt{out} ? path($opt{out}) : Path::Tiny->tempfile(
 
 print "Writing output to $file\n" if $opt{verbose};
 
-my $cwd  = getcwd();
+my $cwd  = $opt{root} || getcwd();
 my $code = test_bundle_use($opt{test_bundle});
 
 $code .= "
