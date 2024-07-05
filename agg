@@ -2,15 +2,16 @@
 
 =head1 NAME
 
-agg - Test2::Aggregate harness wrapper
+agg - Test2::Aggregate harness wrapper / helper script
 
 =head1 DESCRIPTION
 
 Pass a list of Perl test files/directories and they will run aggregated via yath
-(or prove if specified).
+(or prove if specified). It is not meant to be used for .t files that use Test2::Aggregate
+themselves.
 
 It is useful either to speed up a test run for tests you know can be aggregated,
-or to check whether specific tests can pass under Test2::Aggregate.
+or to check whether specific tests can run successfully under Test2::Aggregate.
 
 =head1 SYNOPSIS
 
@@ -40,12 +41,10 @@ use warnings;
 
 use lib 'lib';
 
-use Carp;
-use Cwd;
-use File::Temp 'tempfile';
 use Getopt::Long;
 use Path::Tiny;
 use Pod::Usage;
+use Test2::Aggregate::Helper;
 
 my %opt = (framework => 'Test2::V0');
 GetOptions(
@@ -70,27 +69,9 @@ GetOptions(
 pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
     if $opt{help} || !@ARGV;
 
-$opt{test_bundle} ||= $opt{prove} ? 'Test::More' : 'Test2::V0';
-$opt{stats_output} = $opt{pass_output} if $opt{pass_output};
+Test2::Aggregate::Helper::setup_options(\%opt);
 
-if ($opt{root}) {
-    $opt{absolute} = undef;
-    croak "Specified --root does not exist" unless -e $opt{root};
-    my $slash = '';
-    $slash = '/' unless $opt{root} =~ m#/$#;
-    foreach (@ARGV) {
-        croak "$opt{root}$slash$_ doesn't exist" unless -e "$opt{root}$slash$_";
-    }
-} elsif (!$opt{absolute}) {
-    $opt{root} = "./";
-}
-
-unless ($opt{prove}) {
-    eval "use Test2::Harness";
-    $opt{prove} = 1 if $@;
-}
-
-my $file = $opt{out} ? path($opt{out}) : Path::Tiny->tempfile(
+my $file = $opt{out} ? path($opt{out}.'.t') : Path::Tiny->tempfile(
     TEMPLATE => "aggXXXXXX",
     SUFFIX   => '.t',
     UNLINK   => 0
@@ -98,57 +79,7 @@ my $file = $opt{out} ? path($opt{out}) : Path::Tiny->tempfile(
 
 print "Writing output to $file\n" if $opt{verbose};
 
-my $cwd  = $opt{root} || getcwd();
-my $code = test_bundle_use($opt{test_bundle});
-
-$code .= "
-use Test2::Aggregate;
-
-my \$stats = Test2::Aggregate::run_tests(
-";
-$code .= "\ttest_warnings => 1,\n" if $opt{test_warnings};
-$code .= "\tstats_output => '$opt{stats_output}',\n" if $opt{stats_output};
-$code .= "\tpass_only => 1,\n" if $opt{pass_output};
-$code .= "\treverse => 1,\n" if $opt{reverse};
-$code .= "\tshuffle => 1,\n" if $opt{shuffle};
-$code .= "\tsort => 1,\n" if $opt{sort};
-$code .= "\troot => '$cwd',\n\t";
-$code .= $opt{lists} ? "lists" : "dirs";
-$code .= " => [\n";
-$code .= join(",\n", map {"'$_'"} absolute_paths($cwd, $opt{absolute}, @ARGV));
-$code .= "\n\t],
-);
-done_testing();
-";
-
+my $code = Test2::Aggregate::Helper::generate_code(\%opt, @ARGV);
 $file->spew_utf8($code);
 
-my $cmd  = $opt{prove} ? 'prove' : 'yath';
-my @args = ($file);
-unshift @args, '-v'              if $opt{verbose};
-unshift @args, "-I$opt{include}" if $opt{include};
-unshift @args, 'test' unless $opt{prove};
-
-exec($cmd, @args);
-
-sub test_bundle_use {
-    my @modules = split /,/, shift;
-    my $str     = '';
-    $str .= "use $_;\n" for @modules;
-    return $str;
-}
-
-sub absolute_paths {
-    my $cwd  = shift;
-    my $abs  = shift;
-    return @_ unless $abs;
-
-    my @paths = @_;
-    my @norm;
-
-    $cwd =~ s#/?$#/#;
-
-    push @norm, (substr($_, 0, 1) eq '/' ? $_ : "$cwd$_") for @paths;
-
-    return @norm;
-}
+exec(Test2::Aggregate::Helper::create_command(\%opt, $file));

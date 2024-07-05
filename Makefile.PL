@@ -19,7 +19,7 @@ my %WriteMakefileArgs = (
     CONFIGURE_REQUIRES => {
         'ExtUtils::MakeMaker' => '0',
     },
-    EXE_FILES     => ["agg"],
+    EXE_FILES     => ["agg", "aggit"],
     TEST_REQUIRES => {
         'Test::Output' => '0',
         'Test2::V0'    => '0'

@@ -1,10 +1,13 @@
 Revision history for Test2-Aggregate
 
-0.18    2024-07-01
+0.18    2024-07-03
         agg helper script.
+        aggit helper script.
         'pass_only' option.
+        'bail_on_fail' option.
         Write stats per test file (repeat==1) to avoid losing them on SIG exit.
         Test names without $root for stats, 'absolute' option for old behaviour.
+        Add './' to start of paths when required, 'no_dot' option for old behaviour.
         'reverse' applied after 'sort'.
 
 0.17    2022-02-10

@@ -19,7 +19,7 @@ Test2::Aggregate - Aggregate tests for increased speed
     use Test2::V0; # Or 'use Test::More' etc if your suite uses an other framework
 
     Test2::Aggregate::run_tests(
-        dirs => \@test_dirs
+        dirs => [@test_dirs_or_files]
     );
 
     done_testing();
@@ -76,12 +76,14 @@ have less issues with L<Test2::Suite> (see notes).
         unique        => 1,                   # optional
         repeat        => 1,                   # optional, requires Test2::Plugin::BailOnFail for < 0
         slow          => 0,                   # optional
+        test_warnings => 0,                   # optional
         override      => \%override,          # optional, requires Sub::Override
         stats_output  => $stats_output_path,  # optional
         extend_stats  => 0,                   # optional
         pass_only     => 0,                   # optional
         absolute      => 0,                   # optional
-        test_warnings => 0,                   # optional
+        bail_on_fail  => 0,                   # optional, requires Test2::Plugin::BailOnFail
+        no_dot        => 0,                   # optional
         allow_errors  => 0,                   # optional
         pre_eval      => $code_to_eval,       # optional
         dry_run       => 0,                   # optional
@@ -242,6 +244,12 @@ but still allow additions in future versions that will only be written with the
 C<extend_stats> option enabled.
 Additions with C<extend_stats> as of the current version:
 
+=over 4
+
+- starting date/time in ISO_8601.
+
+=back
+
 =item * C<pass_only> (optional)
 
 Modifies C<stats_output> by making it only print out a list of passing tests.
@@ -252,11 +260,15 @@ Has no effect if C<stats_output> is not defined.
 
 Matches pre-v0.18 behaviour by including C<root> to the output of stats.
 
-=over 4
+=item * C<no_dot> (optional)
 
-- starting date/time in ISO_8601.
+Current version will add a C<./> at the start of a test file if the full path does
+not start with C</> or C<.> to avoid the C<'.' is no longer in @INC> error.
+Setting C<no_dot> to true matches pre-v0.18 behaviour that did not do this.
 
-=back
+=item * C<bail_on_fail> (optional)
+
+Will bail (exit) on first test failure.
 
 =back
 
@@ -320,6 +332,7 @@ sub run_tests {
             }
         }
     } elsif ($args{test_warnings}) {
+        eval 'use Test2::Plugin::BailOnFail' if $args{bail_on_fail};
         $warnings = _process_warnings(
             Test2::V0::warnings { _run_tests(\@tests, \%args) },
             \%args
@@ -330,6 +343,7 @@ sub run_tests {
             'No warnings in the aggregate tests.'
         );
     } else {
+        eval 'use Test2::Plugin::BailOnFail' if $args{bail_on_fail};
         _run_tests(\@tests, \%args);
     }
 
@@ -411,9 +425,12 @@ sub _run_tests {
                 if ($args->{dry_run}) {
                     Test2::V0::ok($test);
                 } else {
+                    my $t= $test;
+                    $t = "./$test"
+                        unless $args->{no_dot} || $test =~ m#^[./]#;
                     $args->{package}
-                        ? eval "package Test::$i" . '::' . "$count; do '$test';"
-                        : do $test;
+                        ? eval "package Test::$i" . '::' . "$count; do '$t';"
+                        : do $t;
                     $exec_error = $@;
                 }
                 Test2::V0::is($exec_error, '', 'Execution should not fail/warn')
@@ -482,6 +499,7 @@ sub _stats_fh {
         my $file = $args->{stats_output}."/".$args->{caller}."-"._timestamp().".txt";
         open($fh, '>', $file) or die "Can't open > $file: $!";
     }
+    select($fh); $| = 1; select(STDOUT);
 
     $args->{total_time} = 0;
     my $extra = $args->{extend_stats} ? ' TIMESTAMP' : '';
@@ -529,6 +547,36 @@ sub _timestamp {
     my ($s, $m, $h, $D, $M, $Y) = localtime(time);
     return sprintf "%04d%02d%02dT%02d%02d%02d", $Y+1900, $M+1, $D, $h, $m, $s;
 }
+
+=head1 HELPER SCRIPTS
+
+=head2 agg (Test2::Aggregate harness wrapper)
+
+ agg [options] <file/dir1 ...>
+
+Pass a list of Perl test files/directories and they will run aggregated via yath
+(or prove if specified). It is not meant to be used for .t files that use Test2::Aggregate
+themselves.
+
+It is useful either to speed up a test run for tests you know can be aggregated,
+or to check whether specific tests can run successfully under Test2::Aggregate.
+
+ Options:
+ --out <s>,          -o <s>  : Specify the test file to be created (tmp file by default).
+ --lists,            -l      : Use files specified as lists.
+ --prove,            -p      : Force prove (default is yath/Test2 if installed).
+ --verbose,          -v      : Verbose (passed to yath/prove)
+ --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
+ --root <s>          -r <s>  : Define a custom root dir (default is current dir).
+ --include <s>,      -I <s>  : Library paths to include.
+ --test_warnings,    -w      : Fail tests on warnings.
+ --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Can be comma-separated list.
+ --pass_output <s>,  -po <s> : Output directory for list of 100% passing tests.
+ --reverse                   : Reverse the test order.
+ --shuffle                   : Shuffle the test order.
+ --sort                      : Run the tests alphabetically.
+ --stats_output <s>, -so <s> : Stats output directory (does not combine with pass_output).
+ --help              -h      : Show basic help and exit.
 
 =head1 USAGE NOTES
 
@@ -612,29 +660,6 @@ disable warnings on redefines only for tests that run aggregated:
 
 Another idea is to make the test die when it is run under the aggregator, if, at
 design time, you know it is not supposed to run aggregated.
-
-=head2 agg helper script
-
- agg [options] <file/dir1 ...>
-
-Pass a list of Perl test files/directories and they will run aggregated via yath
-(or prove if specified).
-
- Options:
- --out <s>,          -o <s>  : Specify the test file to be created (tmp file by default).
- --lists,            -l      : Use files specified as lists.
- --prove,            -p      : Force prove (default is yath/Test2 if detected).
- --verbose,          -v      : Verbose (passed to yath/prove)
- --absolute,         -a      : Use absolute paths in generated files.
- --include <s>,      -I <s>  : Library paths to include.
- --test_warnings,    -w      : Fail tests on warnings.
- --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Can be comma-separated list.
- --pass_output <s>,  -po <s> : Output directory for list of 100% passing tests.
- --reverse                   : Reverse the test order. 
- --shuffle                   : Shuffle the test order.
- --sort                      : Run the tests alphabetically.
- --stats_output <s>, -so <s> : Stats output directory (does not combine with pass_list).
- --help              -h      : Show basic help and exit.
 
 =head2 Example aggregating strategy
 
