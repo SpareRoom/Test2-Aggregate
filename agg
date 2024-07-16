@@ -23,7 +23,7 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
  --prove,            -p      : Force prove (default is yath/Test2 if installed).
  --verbose,          -v      : Verbose (passed to yath/prove)
  --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
- --root <s>          -r <s>  : Define a custom root dir (default is current dir).
+ --root <s>          -r <s>  : Define a custom root dir.
  --include <s>,      -I <s>  : Library paths to include.
  --test_warnings,    -w      : Fail tests on warnings.
  --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Can be comma-separated list.
@@ -71,15 +71,15 @@ pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
 
 Test2::Aggregate::Helper::setup_options(\%opt);
 
-my $file = $opt{out} ? path($opt{out}.'.t') : Path::Tiny->tempfile(
+$opt{file} = $opt{out} ? path($opt{out}.'.t') : Path::Tiny->tempfile(
     TEMPLATE => "aggXXXXXX",
     SUFFIX   => '.t',
     UNLINK   => 0
 );
 
-print "Writing output to $file\n" if $opt{verbose};
+print "Writing output to $opt{file}\n" if $opt{verbose};
 
 my $code = Test2::Aggregate::Helper::generate_code(\%opt, @ARGV);
-$file->spew_utf8($code);
+$opt{file}->spew_utf8($code);
 
-exec(Test2::Aggregate::Helper::create_command(\%opt, $file));
+exec(Test2::Aggregate::Helper::create_command(\%opt, $opt{file}));

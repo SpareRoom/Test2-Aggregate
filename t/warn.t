@@ -37,8 +37,9 @@ like(
             slow => 1
         );
         Test2::Aggregate::run_tests(
-            dirs => ['xt/aggregate'],
-            root => '/xx/',
+            dirs          => ['xt/aggregate'],
+            root          => '/xx/',
+            relative_root => 1
         );
     },
     [qr/Root .* does not exist/],
@@ -86,7 +87,7 @@ done_testing;
 
 sub check_output {
     my $run  = shift;
-    my $abs  = shift;
+    my $abs  = shift || 0;
     my $msg  = shift;
     my $r    = shift || $root || '';
     my %warn = ();
@@ -111,6 +112,6 @@ sub check_output {
                 'pass_perc' => 100
             }
         },
-        "Correct output - $msg"
+        "Correct output - abs:$abs $msg"
     );
 }

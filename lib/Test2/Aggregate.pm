@@ -3,6 +3,7 @@ package Test2::Aggregate;
 use strict;
 use warnings;
 
+use File::Basename;
 use File::Find;
 use File::Path;
 use Path::Tiny;
@@ -84,6 +85,7 @@ have less issues with L<Test2::Suite> (see notes).
         absolute      => 0,                   # optional
         bail_on_fail  => 0,                   # optional, requires Test2::Plugin::BailOnFail
         no_dot        => 0,                   # optional
+        relative_root => 0,                   # optional
         allow_errors  => 0,                   # optional
         pre_eval      => $code_to_eval,       # optional
         dry_run       => 0,                   # optional
@@ -135,9 +137,14 @@ Applied after C<exclude>.
 
 =item * C<root> (optional)
 
-If defined, must be a valid root directory that will prefix all C<dirs> and
-C<lists> items. You may want to set it to C<'./'> if you want dirs relative
-to the current directory and the dot is not in your C<@INC>.
+If defined, must be a valid root directory that will prefix all C<dirs> and C<lists>
+items. You may want to set it to C<'./'> if you want dirs relative to the current
+directory and the dot is not in your C<@INC>.
+
+=item * C<relative_root> (optional)
+
+Set to true if you want your root to be relative to the caller script's directory
+(based on C<$0>). It is ignored if you use an absolute root path.
 
 =item * C<load_modules> (optional)
 
@@ -289,19 +296,22 @@ sub run_tests {
 
     @dirs = @{$args{dirs}} if $args{dirs};
     $args{root} .= '/' unless !$args{root} || $args{root} =~ m#/$#;
+    $args{root} = dirname($0) . "/$args{root}"
+        if $args{relative_root} && $args{root} && $args{root} !~ m#^/#;
 
     if ($args{root} && ! -e $args{root}) {
         warn "Root '$args{root}' does not exist, no tests are loaded."
     } else {
         foreach my $file (@{$args{lists}}) {
             push @dirs,
-              map { /^\s*(?:#|$)/ ? () : $_ }
-              split(/\r?\n/, _read_file($args{root}.$file, $args{slurp_param}));
+                map {/^\s*(?:#|$)/ ? () : $_}
+                split(/\r?\n/,
+                _read_file($args{root}, $file, $args{slurp_param}));
         }
 
         find(
             sub {push @tests, $File::Find::name if /\.t$/},
-            grep {-e} map {$args{root} . $_} @dirs
+            grep {-e} map {_check_abs_path($args{root}, $_)} @dirs
         )
             if @dirs;
     }
@@ -353,11 +363,21 @@ sub run_tests {
     return $args{stats};
 }
 
+sub _check_abs_path {
+    my $root = shift;
+    my $path = shift;
+    # Can't use path() below as it removes ./ which is needed for absolute option
+    $path = "$root$path" unless !$root || substr($path, 0, 1) eq '/';
+    return $path;
+}
+
 sub _read_file {
+    my $root  = shift;
     my $path  = shift;
     my $param = shift;
-    my $file  = path($path);
-    return $param ? $file->slurp_utf8 : $file->slurp($param);
+    my $file  = path(_check_abs_path($root, $path));
+
+    return $param ? $file->slurp($param) : $file->slurp_utf8;
 }
 
 sub _process_run_order {
@@ -412,6 +432,7 @@ sub _run_tests {
         foreach my $test (@$tests) {
             my $test_nm =
                 $args->{absolute} ? $test : _test_name($test, $args->{root});
+
             warn  "$test_nm->Test2::Aggregate\n" if $args->{test_warnings};
 
             $stats{$test_nm}{test_no} = $count unless $stats{$test_nm}{test_no};
@@ -729,6 +750,13 @@ Here is an example of a wrapper around C<yath>, to easily handle multiple lists:
 You would call it with something like C<--exclude-lists=t/aggregate/*.lst>, and
 the tests listed will be excluded (you will have them running aggregated through
 their own C<.t> files using L<Test2::Aggregate>).
+
+=head1 WINDOWS SUPPORT
+
+Only filesystems with the C</> separator are supported, simply because the author
+does not expect Windows users (many test suites don't work under StrawberryPerl
+etc). However, if you want Windows filesystems to be supported it should be simple
+enough, so just ask.
 
 =head1 AUTHOR
 
