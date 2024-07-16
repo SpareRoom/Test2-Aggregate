@@ -9,7 +9,7 @@ my $pattrn = 'stats.t.*txt';
 my $tmpdir = File::Temp->newdir;
 
 plan skip_all => "Cannot create temp directory" unless -e $tmpdir;
-plan(12);
+plan(17);
 
 foreach my $extend (0 .. 1) {
     stdout_like(sub {
@@ -25,6 +25,18 @@ foreach my $extend (0 .. 1) {
     );
 }
 
+stdout_like(sub {
+        Test2::Aggregate::run_tests(
+            dirs         => ['xt/aggregate'],
+            root         => $root,
+            stats_output => '-',
+            pass_only    => 1
+        )
+    },
+    qr/^(?:\S*\n)+$/,
+    "Valid stats output for pass_only"
+);
+
 Test2::Aggregate::run_tests(
     dirs         => ['xt/aggregate'],
     root         => $root,
@@ -36,6 +48,7 @@ like(find($tmpdir, $pattrn), [qr/$pattrn/], "Found stats file");
 Test2::Aggregate::run_tests(
     dirs         => ['xt/aggregate'],
     root         => $root,
+    repeat       => 2,
     stats_output => "$tmpdir/tmp1$timest"
 );
 
