@@ -89,6 +89,7 @@ have less issues with L<Test2::Suite> (see notes).
         allow_errors  => 0,                   # optional
         pre_eval      => $code_to_eval,       # optional
         dry_run       => 0,                   # optional
+        recursion     => 0,                   # optional
         slurp_param   => {binmode => $mode}   # optional
     );
 
@@ -275,7 +276,15 @@ Setting C<no_dot> to true matches pre-v0.18 behaviour that did not do this.
 
 =item * C<bail_on_fail> (optional)
 
-Will bail (exit) on first test failure.
+Will bail (exit) on first test failure. It is implied for repeat < 0.
+
+=back
+
+=item * C<recursion> (optional)
+
+Setting it to 1 will allow recursion. By default, if C<$ENV{AGGREGATE_TESTS}> is
+true, C<run_tests> will skip the tests to avoid running under a parent aggregator
+C<run_tests>.
 
 =back
 
@@ -283,8 +292,12 @@ Will bail (exit) on first test failure.
 
 sub run_tests {
     my %args = @_;
+
     Test2::V0::plan skip_all => 'Skipping slow tests.'
         if $args{slow} && $ENV{SKIP_SLOW};
+
+    Test2::V0::plan skip_all => 'Skipping aggregator recursion.'
+        if !$args{recursion} && $ENV{AGGREGATE_TESTS};
 
     eval "use $_;" foreach @{$args{load_modules}};
     local $ENV{AGGREGATE_TESTS} = 1;
@@ -366,7 +379,7 @@ sub run_tests {
 sub _check_abs_path {
     my $root = shift;
     my $path = shift;
-    # Can't use path() below as it removes ./ which is needed for absolute option
+    # Can't use path() below as it removes ./ (required by absolute option)
     $path = "$root$path" unless !$root || substr($path, 0, 1) eq '/';
     return $path;
 }
@@ -384,8 +397,10 @@ sub _process_run_order {
     my $tests = shift;
     my $args  = shift;
 
-    @$tests = grep(!/$args->{exclude}/, @$tests) if $args->{exclude};
-    @$tests = grep(/$args->{include}/, @$tests) if $args->{include};
+    @$tests = grep(!_path_match($_, $args->{exclude}, $args->{root}), @$tests)
+        if $args->{exclude};
+    @$tests = grep(_path_match($_, $args->{include}, $args->{root}), @$tests)
+        if $args->{include};
 
     @$tests = _uniq(@$tests)  if $args->{unique};
 
@@ -397,6 +412,13 @@ sub _process_run_order {
     }
 
     @$tests = reverse @$tests if $args->{reverse};
+}
+
+sub _path_match {
+    my ($test, $regex, $root) = @_;
+
+    return 1 if $test =~ /$regex/;
+    return _test_name($test, $root) =~ /$regex/;
 }
 
 sub _process_warnings {
@@ -636,6 +658,18 @@ Although the module tries to load C<Test2> with minimal imports to not interfere
 it is generally better to do C<use Test::More;> in your aggregating test (i.e.
 alongside with C<use Test2::Aggregate>).
 
+=head2 Test::Builder
+
+To avoid warnings, if you are importing L<Test::Builder> in multiple aggregated
+tests, you will want to import first on the aggregating test.
+It might look like this:
+
+ use Test::Builder;
+ use Test2::V0;
+ use Test2::Aggregator;
+
+ Test2::Aggregate::run_tests( ... );
+
 =head2 BEGIN / END Blocks
 
 C<BEGIN> / C<END> blocks will run at the start/end of each test and any overrides
@@ -657,6 +691,15 @@ L<Test::Class> is sort of an aggregator itself. You make your tests into modules
 and then load them on the same C<.t> file, so ideally you will not end up with many
 C<.t> files that would require further aggregation. If you do, due to the L<Test::Class>
 implementation specifics, those C<.t> files won't run under L<Test2::Aggregator>.
+
+=head2 $0 variable
+
+Remember the C<$0> variable is the aggregate runner, not the test file.
+
+=head2 Mocks, CORE::GLOBAL::* Overrides
+
+Always prefer mocks (Test2::Mock) instead of global built-ins where possible for
+aggregated tests. Remember to clear mocks at the end of test.
 
 =head2 $ENV{AGGREGATE_TESTS}
 
@@ -755,8 +798,8 @@ their own C<.t> files using L<Test2::Aggregate>).
 
 Only filesystems with the C</> separator are supported, simply because the author
 does not expect Windows users (many test suites don't work under StrawberryPerl
-etc). However, if you want Windows filesystems to be supported it should be simple
-enough, so just ask.
+etc). However, if you want Windows filesystems to be supported, it should be simple
+enough as long as you are willing to help with testing - just ask.
 
 =head1 AUTHOR
 

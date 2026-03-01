@@ -1,0 +1,108 @@
+use Test2::V0;
+use Path::Tiny;
+use Test2::Aggregate::Helper;
+
+subtest 'setup_options with include/exclude inputs' => sub {
+    my $list = Path::Tiny->tempfile;
+    $list->spew_utf8(join "\n",
+        "# comment",
+        "xt/aggregate/check_env.t",
+        "./xt/aggregate/check_plan.t",
+        ""
+    );
+
+    my %opt = (
+        prove         => 1,
+        event_timeout => 10,
+        include_regex => 'check_',
+        exclude_regex => 'fail',
+        exclude_list  => "$list",
+    );
+
+    local @ARGV = ();
+    Test2::Aggregate::Helper::setup_options(\%opt);
+
+    is($opt{test_bundle}, 'Test::More', 'default test bundle with --prove');
+    ok(!exists $opt{event_timeout}, 'event timeout removed when using --prove');
+    is($opt{root}, './', 'default root set');
+    ok($opt{relative_root}, 'relative_root enabled by default');
+    ok($opt{include_pattern}, 'include pattern created');
+    ok($opt{exclude_pattern}, 'exclude pattern created');
+
+    my $in = qr/$opt{include_pattern}/;
+    ok('xt/aggregate/check_env.t' =~ $in, 'include regex included');
+
+    my $ex = qr/$opt{exclude_pattern}/;
+    ok('my/fail_test.t' =~ $ex, 'exclude regex included');
+    ok('xt/aggregate/check_env.t' =~ $ex, 'exclude list entry included');
+    ok('./xt/aggregate/check_plan.t' =~ $ex, 'exclude list normalized match included');
+};
+
+subtest 'setup_options validation' => sub {
+    my %opt = (
+        prove        => 1,
+        exclude_list => '/tmp/definitely-not-a-real-list-for-test2-aggregate',
+    );
+
+    local @ARGV = ();
+    like(
+        dies { Test2::Aggregate::Helper::setup_options(\%opt) },
+        qr/Specified --exclude_list does not exist/,
+        'invalid exclude list path dies'
+    );
+
+    my %opt2 = (
+        prove         => 1,
+        include_regex => '(unterminated',
+    );
+
+    like(
+        dies { Test2::Aggregate::Helper::setup_options(\%opt2) },
+        qr/Invalid --include_regex/,
+        'invalid include regex dies'
+    );
+};
+
+subtest 'generate_code renders include/exclude and quoted strings' => sub {
+    my $input = 'xt/aggregate';
+    my %opt = (
+        prove         => 1,
+        test_bundle   => 'Test::More',
+        root          => './',
+        relative_root => 1,
+        include_pattern => q{bar'baz},
+        exclude_pattern => q{foo'bar},
+        file          => path('t', 'tmp-helper.t'),
+    );
+
+    my $code = Test2::Aggregate::Helper::generate_code(\%opt, $input);
+
+    ok(index($code, "exclude => 'foo\\'bar',") >= 0, 'exclude is quoted in generated code');
+    ok(index($code, "include => 'bar\\'baz',") >= 0, 'include is quoted in generated code');
+    ok(index($code, "done_testing();") >= 0, 'generated code includes done_testing');
+};
+
+subtest 'create_command output' => sub {
+    my %opt = (
+        prove         => 0,
+        event_timeout => 9,
+        include       => 'lib',
+        verbose       => 1,
+    );
+
+    my @cmd = Test2::Aggregate::Helper::create_command(\%opt, 'sample.t');
+    is(
+        \@cmd,
+        ['yath', 'test', '--et 9', '-Ilib', '-v', 'sample.t'],
+        'full command for yath mode'
+    );
+
+    my @args = Test2::Aggregate::Helper::create_command(\%opt, 'sample.t', 1);
+    is(
+        \@args,
+        ['--et 9', '-Ilib', '-v', 'sample.t'],
+        'args_only omits command and yath subcommand'
+    );
+};
+
+done_testing;

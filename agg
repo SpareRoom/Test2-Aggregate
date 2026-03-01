@@ -23,10 +23,12 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
  --prove,            -p      : Force prove (default is yath/Test2 if installed).
  --verbose,          -v      : Verbose (passed to yath/prove)
  --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
+ --include_regex <s> -ir <s> : Regex for test paths to include.
+ --exclude_regex <s> -er <s> : Regex for test paths to exclude.
  --root <s>          -r <s>  : Define a custom root dir.
  --include <s>,      -I <s>  : Library paths to include.
  --test_warnings,    -w      : Fail tests on warnings.
- --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Can be comma-separated list.
+ --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Comma-separated list.
  --pass_output <s>,  -po <s> : Output directory for list of 100% passing tests.
  --reverse                   : Reverse the test order.
  --shuffle                   : Shuffle the test order.
@@ -46,10 +48,12 @@ use Path::Tiny;
 use Pod::Usage;
 use Test2::Aggregate::Helper;
 
-my %opt = (framework => 'Test2::V0');
+my %opt;
 GetOptions(
     \%opt,
     'absolute|a',
+    'include_regex|ir=s',
+    'exclude_regex|er=s',
     'help|h',
     'include|I=s',
     'lists|l',

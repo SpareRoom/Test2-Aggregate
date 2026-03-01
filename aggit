@@ -1,0 +1,180 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+aggit - Test2::Aggregate iterative aggregator
+
+=head1 DESCRIPTION
+
+Pass a list of Perl test files/directories and they will run aggregated via yath
+(or prove if specified). On the first failure, the suite will re-run with the failed
+test removed. This will be repeated until there are no failed tests.
+
+It is useful for generating a list of tests that can be run aggregated together.
+It may take a very long time, depending on the number of tests in your suite, so
+look into the L<Test2::Aggregate> docs for more efficient strategies.
+Note that it is often the case a passing test might cause several others after it
+to fail, which is why aggregation failures should be investigated if you want to
+aggregate a large percentage of your test suite (and also a reason why using the
+C<reverse/shuffle/sort> options may give you very different results). aggit is just
+a coarse tool that may help as a starting point.
+
+=head1 SYNOPSIS
+
+ aggit [options] <file/dir1 ...>
+
+ Options:
+ --out <s>,          -o <s>  : Specify the test file to be created (tmp file by default).
+ --lists,            -l      : Use files specified as lists.
+ --prove,            -p      : Force prove (default is yath/Test2 if installed).
+ --verbose,          -v      : Verbose (passed to yath/prove)
+ --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
+ --exclude_regex <s> -er <s> : Regex for test paths to exclude.
+ --exclude_list <s>  -el <s> : File with test paths to exclude (one per line).
+ --event_timeout <i> -et <i> : Event timeout for yath (to determine hung tests). Default 10.
+ --root <s>          -r <s>  : Define a custom root dir (default is current dir).
+ --include <s>,      -I <s>  : Library paths to include.
+ --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Comma-separated list.
+ --reverse                   : Reverse the test order.
+ --shuffle                   : Shuffle the test order.
+ --sort                      : Run the tests alphabetically.
+ --help              -h      : Show basic help and exit.
+
+=cut
+
+use strict;
+use warnings;
+
+use lib 'lib';
+
+use Carp;
+use Cwd;
+use Getopt::Long;
+use Path::Tiny;
+use Pod::Usage;
+use Test2::Aggregate;
+use Test2::Aggregate::Helper;
+
+my %opt = (event_timeout => 10);
+GetOptions(
+    \%opt,
+    'absolute|a',
+    'exclude_regex|er=s',
+    'exclude_list|el=s',
+    'help|h',
+    'include|I=s',
+    'lists|l',
+    'event_timeout|et=s',
+    'out|o=s',
+    'prove|p',
+    'reverse',
+    'root|r=s',
+    'shuffle',
+    'sort',
+    'test_bundle|t=s',
+    'verbose|v',
+);
+
+pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
+    if $opt{help} || !@ARGV;
+
+Test2::Aggregate::Helper::setup_options(\%opt);
+
+my $file = $opt{out} ? path($opt{out}.'.t') : Path::Tiny->tempfile(
+    TEMPLATE => "aggXXXXXX",
+    SUFFIX   => '.t',
+    UNLINK   => 0
+);
+
+my $list = $opt{out} ? path($opt{out}.'.lst') : Path::Tiny->tempfile(
+    TEMPLATE => "aggXXXXXX",
+    SUFFIX   => '.lst',
+    UNLINK   => 0
+);
+
+my $stats;
+my $cwd = getcwd();
+$opt{file} = $file;
+my $code = Test2::Aggregate::Helper::generate_code({%opt, dry_run => 1, root => './'}, @ARGV);
+
+$code =~ s/(Test2::Aggregate::run_tests)/\$stats = $1/;
+$code =~ s#root => './'#"root => '".$file->parent()->absolute()."'"#e;
+
+chdir $file->parent();
+eval $code;
+chdir $cwd;
+croak $@ if $@;
+croak "No tests found" unless $stats;
+finish($file, $list, \%opt, []) unless %$stats;
+
+my @test_list = sort { $stats->{$a}->{test_no} <=> $stats->{$b}->{test_no} } keys %$stats;
+
+my $dir = Path::Tiny->tempdir(DIR => './', UNLINK => 0);
+my $cnt = 0;
+while (++$cnt) {
+    print "** iter $cnt: ".scalar(@test_list)." test files to attempt\n";
+    $list->spew_utf8(join("\n",@test_list)."\n");
+
+    my $code = Test2::Aggregate::Helper::generate_code({
+            %opt,
+            lists        => 1,
+            stats_output => $dir,
+            pass_output  => 1,
+            bail_on_fail => 1
+        },
+        $list
+    );
+    $file->spew_utf8($code);
+
+    my @cmd = Test2::Aggregate::Helper::create_command({%opt}, $file);
+    system @cmd;
+    my @out = read_pass_output($dir);
+    chomp(@out);
+    print "** ".scalar(@out)." test files passed\n";
+    finish($file, $list, \%opt, \@out) if scalar @out == scalar @test_list;
+    my $rem = remove_failed(\@test_list, \@out);
+    croak "Error finding last failing test" unless $rem;
+    finish($file, $list, \%opt, []) unless scalar @test_list;
+}
+
+sub remove_failed {
+    my ($test, $out) = @_;
+    my %hash;
+    $hash{$_} = 1 for @$out;
+    for (my $i = 0; $i < scalar @$test; $i++) {
+        unless ($hash{$test->[$i]}) {
+            print "** Removing $test->[$i] at $i\n";
+            splice(@$test, $i, 1);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+sub read_pass_output {
+    my ($dir) = @_;
+    my @out;
+    foreach my $file (path($dir)->children) {
+        push @out, grep {length} split /\r?\n/, $file->slurp_utf8;
+        $file->remove;
+    }
+    return @out;
+}
+
+sub finish {
+    my ($file, $list, $opt, $out) = @_;
+    $list->spew_utf8(join("\n",@$out)."\n");
+    my $code = Test2::Aggregate::Helper::generate_code({
+            %$opt,
+            root  => './',
+            lists => 1,
+        },
+        $list
+    );
+    $file->spew_utf8($code);
+
+    print "Passing tests: ".scalar(@$out);
+    print "\nTest file: $file\n";
+    print "List file: $list\n";
+    exit;
+}
