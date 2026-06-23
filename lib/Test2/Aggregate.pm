@@ -27,11 +27,11 @@ Test2::Aggregate - Aggregate tests for increased speed
 
 =head1 VERSION
 
-Version 0.18
+See C<$VERSION> in module.
 
 =cut
 
-our $VERSION = '0.18';
+our $VERSION = '1.00';
 
 =head1 DESCRIPTION
 
@@ -254,7 +254,7 @@ Additions with C<extend_stats> as of the current version:
 
 =over 4
 
-- starting date/time in ISO_8601.
+=item * starting date/time in ISO_8601.
 
 =back
 
@@ -266,19 +266,17 @@ Has no effect if C<stats_output> is not defined.
 
 =item * C<absolute> (optional)
 
-Matches pre-v0.18 behaviour by including C<root> to the output of stats.
+Matches pre-1.00 behaviour by including C<root> in the output of stats.
 
 =item * C<no_dot> (optional)
 
 Current version will add a C<./> at the start of a test file if the full path does
 not start with C</> or C<.> to avoid the C<'.' is no longer in @INC> error.
-Setting C<no_dot> to true matches pre-v0.18 behaviour that did not do this.
+Setting C<no_dot> to true matches pre-1.00 behaviour that did not do this.
 
 =item * C<bail_on_fail> (optional)
 
 Will bail (exit) on first test failure. It is implied for repeat < 0.
-
-=back
 
 =item * C<recursion> (optional)
 
@@ -621,6 +619,37 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
  --stats_output <s>, -so <s> : Stats output directory (does not combine with pass_output).
  --help              -h      : Show basic help and exit.
 
+=head2 aggit (Test2::Aggregate iterative aggregator)
+
+ aggit [options] <file/dir1 ...>
+
+Runs tests through an aggregate test repeatedly. On each failed run, the first
+test file that did not make it to the passing output is removed and the remaining
+set is tried again. This is a coarse way to discover a starting list of tests
+that can be aggregated together.
+
+=head2 Common helper workflows
+
+Try known-safe tests through the default L<Test2::Harness> runner:
+
+ agg t/unit t/lib
+
+Force C<prove> and L<Test::More> compatibility mode:
+
+ agg --prove t/unit
+
+Generate a directory containing a list of tests that passed when aggregated:
+
+ agg --pass_output pass t
+
+Iteratively discover an aggregateable list and generated aggregate test:
+
+ aggit --out aggregate-candidate t
+
+Run a generated list file later:
+
+ agg --lists aggregate-candidate.lst
+
 =head1 USAGE NOTES
 
 Not all tests can be modified to run under the aggregator, it is not intended
@@ -646,6 +675,19 @@ even load C<run_tests> with tests that already contain another C<run_tests>, the
 only real issue with multiple calls is that if you use C<repeat < 0> on a call,
 L<Test2::Plugin::BailOnFail> is loaded so any subsequent failure, on any following
 C<run_tests> call will trigger a Bail.
+
+=head2 Version 1.00 path compatibility
+
+Stats keys and warning labels are root-relative by default in 1.00. Set
+C<absolute> if you need the previous full rooted paths in stats output.
+
+Relative test paths that do not start with C</>, C<.>, or C<./> are now executed
+with a C<./> prefix so they keep working on perls where C<.> is not in C<@INC>.
+Set C<no_dot> if you need the previous behaviour.
+
+Nested aggregate runs are skipped by default when C<$ENV{AGGREGATE_TESTS}> is
+already set. Set C<recursion> only for suites where nested aggregate execution is
+intentional.
 
 =head2 Test::More
 

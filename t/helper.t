@@ -93,14 +93,14 @@ subtest 'create_command output' => sub {
     my @cmd = Test2::Aggregate::Helper::create_command(\%opt, 'sample.t');
     is(
         \@cmd,
-        ['yath', 'test', '--et 9', '-Ilib', '-v', 'sample.t'],
+        ['yath', 'test', '--et', 9, '-Ilib', '-v', 'sample.t'],
         'full command for yath mode'
     );
 
     my @args = Test2::Aggregate::Helper::create_command(\%opt, 'sample.t', 1);
     is(
         \@args,
-        ['--et 9', '-Ilib', '-v', 'sample.t'],
+        ['--et', 9, '-Ilib', '-v', 'sample.t'],
         'args_only omits command and yath subcommand'
     );
 };

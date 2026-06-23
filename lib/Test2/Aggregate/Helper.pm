@@ -16,7 +16,27 @@ See L<agg> and L<aggit> helper scripts.
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '1.00';
+
+=head1 FUNCTIONS
+
+=head2 setup_options(\%opt)
+
+Normalizes command-line options used by the helper scripts. This sets defaults,
+validates paths and regexes, prepares include/exclude patterns, and falls back to
+C<prove> when L<Test2::Harness> is unavailable.
+
+=head2 create_command(\%opt, $file, $args_only)
+
+Builds the C<prove> or C<yath> command used to run the generated aggregate test
+file. When C<$args_only> is true, only the arguments are returned.
+
+=head2 generate_code(\%opt, @paths)
+
+Generates a standalone aggregate test file from normalized helper options and
+the supplied test files, directories, or list files.
+
+=cut
 
 sub setup_options {
     my $opt = shift;
@@ -57,7 +77,7 @@ sub create_command {
     my @args = ($file);
     unshift @args, '-v'                            if $opt->{verbose};
     unshift @args, "-I" . $opt->{include}          if $opt->{include};
-    unshift @args, "--et " . $opt->{event_timeout} if $opt->{event_timeout};
+    unshift @args, '--et', $opt->{event_timeout}   if $opt->{event_timeout};
     unshift @args, 'test' unless $opt->{prove} || $args_only;
 
     return @args if $args_only;
@@ -80,8 +100,8 @@ sub generate_code {
         if $opt->{include_pattern};
     $code .= "\tpass_only => 1,\n" if $opt->{pass_output};
     $code .= $opt->{lists} ? "\tlists" : "\tdirs";
-    $code .= " => [\n";
-    $code .= join(",\n", map {_quote_perl_string($_)} _absolute_paths($opt, @_));
+    $code .= " => [\n\t\t";
+    $code .= join(",\n\t\t", map {_quote_perl_string($_)} _absolute_paths($opt, @_));
     $code .= "\n\t]\n);\n\ndone_testing();\n";
     return $code;
 }

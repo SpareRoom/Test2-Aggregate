@@ -9,7 +9,7 @@ cover_db/
 blib/
 .github/
 .git/
-.gitignore/
+.gitignore
 inc/
 .lwpcookies
 .last_cover_stats
