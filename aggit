@@ -19,6 +19,12 @@ aggregate a large percentage of your test suite (and also a reason why using the
 C<reverse/shuffle/sort> options may give you very different results). aggit is just
 a coarse tool that may help as a starting point.
 
+Ordering options are applied once, then retained across retries and in the final
+runner. Requires L<Test2::Plugin::BailOnFail>. Harness startup errors and failures
+after all test files complete abort instead of removing tests. Under C<prove>,
+there is no event timeout. Under C<yath>, the timeout applies to the generated
+runner; timeout comments in aggregated files are not processed by the harness.
+
 =head1 SYNOPSIS
 
  aggit [options] <file/dir1 ...>
@@ -48,7 +54,6 @@ use warnings;
 use lib 'lib';
 
 use Carp;
-use Cwd;
 use Getopt::Long;
 use Path::Tiny;
 use Pod::Usage;
@@ -73,12 +78,14 @@ GetOptions(
     'sort',
     'test_bundle|t=s',
     'verbose|v',
-);
+) or pod2usage(2);
 
 pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
     if $opt{help} || !@ARGV;
 
 Test2::Aggregate::Helper::setup_options(\%opt);
+eval { require Test2::Plugin::BailOnFail; 1 }
+    or croak "aggit requires Test2::Plugin::BailOnFail: $@";
 
 my $file = $opt{out} ? path($opt{out}.'.t') : Path::Tiny->tempfile(
     TEMPLATE => "aggXXXXXX",
@@ -93,23 +100,32 @@ my $list = $opt{out} ? path($opt{out}.'.lst') : Path::Tiny->tempfile(
 );
 
 my $stats;
-my $cwd = getcwd();
 $opt{file} = $file;
-my $code = Test2::Aggregate::Helper::generate_code({%opt, dry_run => 1, root => './'}, @ARGV);
+my $code = Test2::Aggregate::Helper::generate_code({%opt, dry_run => 1, absolute => 1}, @ARGV);
 
 $code =~ s/(Test2::Aggregate::run_tests)/\$stats = $1/;
-$code =~ s#root => './'#"root => '".$file->parent()->absolute()."'"#e;
 
-chdir $file->parent();
-eval $code;
-chdir $cwd;
-croak $@ if $@;
-croak "No tests found" unless $stats;
-finish($file, $list, \%opt, []) unless %$stats;
+{
+    local $0 = "" . $file->absolute;
+    eval $code;
+    croak $@ if $@;
+}
+croak "No tests found" unless $stats && %$stats;
 
-my @test_list = sort { $stats->{$a}->{test_no} <=> $stats->{$b}->{test_no} } keys %$stats;
+my @test_list = map {
+    my $path = path($_)->absolute;
+    "" . ($opt{absolute} ? $path : $path->relative($file->parent->absolute));
+} sort { $stats->{$a}->{test_no} <=> $stats->{$b}->{test_no} } keys %$stats;
 
-my $dir = Path::Tiny->tempdir(DIR => './', UNLINK => 0);
+# Discovery has already filtered and ordered the tests. Keep that exact order.
+delete @opt{qw(reverse shuffle sort include_pattern exclude_pattern)};
+$opt{root} = "" . $file->parent->absolute;
+$opt{relative_root} = 1;
+
+my $work = Path::Tiny->tempdir;
+my $dir = $work->child('passes');
+$dir->mkpath;
+my $progress = $work->child('active-test');
 my $cnt = 0;
 while (++$cnt) {
     print "** iter $cnt: ".scalar(@test_list)." test files to attempt\n";
@@ -120,35 +136,35 @@ while (++$cnt) {
             lists        => 1,
             stats_output => $dir,
             pass_output  => 1,
-            bail_on_fail => 1
+            bail_on_fail => 1,
+            _progress_file => $progress,
         },
-        $list
+        $opt{absolute} ? $list->absolute : $list->basename
     );
     $file->spew_utf8($code);
 
     my @cmd = Test2::Aggregate::Helper::create_command({%opt}, $file);
-    system @cmd;
+    $progress->remove if $progress->exists;
+    my $status = system @cmd;
+    croak "Cannot execute test harness: $!" if $status == -1;
+    croak "Test harness terminated by signal " . ($status & 127) if $status & 127;
     my @out = read_pass_output($dir);
     chomp(@out);
-    print "** ".scalar(@out)." test files passed\n";
-    finish($file, $list, \%opt, \@out) if scalar @out == scalar @test_list;
-    my $rem = remove_failed(\@test_list, \@out);
-    croak "Error finding last failing test" unless $rem;
-    finish($file, $list, \%opt, []) unless scalar @test_list;
-}
-
-sub remove_failed {
-    my ($test, $out) = @_;
-    my %hash;
-    $hash{$_} = 1 for @$out;
-    for (my $i = 0; $i < scalar @$test; $i++) {
-        unless ($hash{$test->[$i]}) {
-            print "** Removing $test->[$i] at $i\n";
-            splice(@$test, $i, 1);
-            return 1;
-        }
+    for my $i (0 .. $#out) {
+        croak "Unexpected passing-test output from test harness"
+            if $i > $#test_list || $out[$i] ne $test_list[$i];
     }
-    return 0;
+    print "** ".scalar(@out)." test files passed\n";
+    finish($file, $list, \%opt, \@out)
+        if !$status && scalar @out == scalar @test_list;
+    my $active = $progress->exists ? $progress->slurp_utf8 : '';
+    chomp $active;
+    croak "Test harness failed without an identifiable active test (exit " . ($status >> 8) . ")"
+        unless $status && length($active) && @out < @test_list
+            && $active eq $test_list[scalar @out];
+    print "** Removing $active at ".scalar(@out)."\n";
+    splice(@test_list, scalar @out, 1);
+    finish($file, $list, \%opt, []) unless scalar @test_list;
 }
 
 sub read_pass_output {
@@ -166,10 +182,9 @@ sub finish {
     $list->spew_utf8(join("\n",@$out)."\n");
     my $code = Test2::Aggregate::Helper::generate_code({
             %$opt,
-            root  => './',
             lists => 1,
         },
-        $list
+        $opt->{absolute} ? $list->absolute : $list->basename
     );
     $file->spew_utf8($code);
 

@@ -8,7 +8,7 @@ unless ( $ENV{AUTHOR_TESTING} ) {
 }
 
 eval "use Pod::Markdown";
-plan skip_all => "Pod::Markdown required for README.md sync test" if $@;
+BAIL_OUT("Pod::Markdown required for README.md sync test: $@") if $@;
 
 my $generated = '';
 my $parser    = Pod::Markdown->new;

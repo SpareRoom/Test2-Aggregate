@@ -1,6 +1,6 @@
 Revision history for Test2-Aggregate
 
-1.00    2026-06-23
+1.00    Not yet released
         - Helper scripts 'agg' and 'aggit' to help aggregating tests.
         - Write stats per test file (repeat==1) to avoid losing them on SIG exit.
         - Test names without $root for stats, 'absolute' option for old behaviour.
@@ -8,6 +8,10 @@ Revision history for Test2-Aggregate
         - Aggregator recursion protection ('recursion' option to allow it).
         - Added 'pass_only', 'bail_on_fail', 'relative_root' options.
         - Option 'reverse' applied after 'sort'.
+        - Fix helper runner fallback, absolute paths and custom roots.
+        - Preserve aggit discovery order and stop on harness infrastructure errors.
+        - Fail explicitly when BailOnFail is required but unavailable.
+        - Generate README.md from module POD when creating a distribution.
 
 0.17    2022-02-10
         - Ignore empty lines in list files.

@@ -217,8 +217,10 @@ The parameters to pass:
 
     `stats_output` specifies a path where a file will be created to print out
     running time per test (average if multiple iterations) and passing percentage.
-    Output is sorted from slowest test to fastest. On negative `repeat` the stats
-    of each successful run will be written separately instead of the averages.
+    With `repeat == 1`, output is written after each test in execution order, so
+    completed results survive an interrupted run. With `repeat > 1`, averages
+    are written from slowest test to fastest after all iterations complete.
+    On negative `repeat`, each iteration streams its own statistics.
     The name of the file is `caller_script-YYYYMMDDTHHmmss.txt`.
     If `'-'` is passed instead of a path, then the output will be written to STDOUT.
     The timing stats are useful because the test harness doesn't normally measure
@@ -255,6 +257,7 @@ The parameters to pass:
 - `bail_on_fail` (optional)
 
     Will bail (exit) on first test failure. It is implied for repeat < 0.
+    Requires [Test2::Plugin::BailOnFail](https://metacpan.org/pod/Test2%3A%3APlugin%3A%3ABailOnFail); a missing plugin is a fatal error.
 
 - `recursion` (optional)
 
@@ -281,6 +284,8 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
     --prove,            -p      : Force prove (default is yath/Test2 if installed).
     --verbose,          -v      : Verbose (passed to yath/prove)
     --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
+    --include_regex <s> -ir <s> : Regex for test paths to include.
+    --exclude_regex <s> -er <s> : Regex for test paths to exclude.
     --root <s>          -r <s>  : Define a custom root dir (default is current dir).
     --include <s>,      -I <s>  : Library paths to include.
     --test_warnings,    -w      : Fail tests on warnings.
@@ -296,10 +301,29 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
 
     aggit [options] <file/dir1 ...>
 
-Runs tests through an aggregate test repeatedly. On each failed run, the first
-test file that did not make it to the passing output is removed and the remaining
-set is tried again. This is a coarse way to discover a starting list of tests
-that can be aggregated together.
+Runs tests through an aggregate test repeatedly. On each failed run, the active
+test file is removed and the remaining set is tried again. Requires
+[Test2::Plugin::BailOnFail](https://metacpan.org/pod/Test2%3A%3APlugin%3A%3ABailOnFail). Startup failures and failures after all test files
+have completed abort the command with a nonzero exit status instead of removing
+tests. This is a coarse way to discover a starting list of tests that can be
+aggregated together, not proof that each removed test is independently broken.
+
+`--sort`, `--shuffle`, and `--reverse` are applied once during discovery.
+The resulting order is preserved across retries and in the generated runner.
+By default, list entries are relative to the generated runner's directory;
+`--absolute` writes absolute paths. `--root` resolves inputs against a custom
+directory. `--exclude_regex` and `--exclude_list` filter the discovered tests.
+
+`aggit` passes `--event_timeout SECONDS` (alias `-et`, default 10) to
+`yath` as `--et SECONDS`. This is an inactivity timeout, not a total runtime
+limit; Harness normally defaults to 60 seconds. The timeout applies to the
+generated aggregate runner, so `# HARNESS-NO-TIMEOUT` comments in individual
+aggregated files do not disable it. Under `--prove`, or automatic fallback to
+`prove` when Harness is unavailable, this timeout is not provided and hung
+tests require external supervision.
+
+For `agg`, `--pass_output` takes precedence over `--stats_output` when both
+are supplied.
 
 ## Common helper workflows
 
@@ -313,15 +337,18 @@ Force `prove` and [Test::More](https://metacpan.org/pod/Test%3A%3AMore) compatib
 
 Generate a directory containing a list of tests that passed when aggregated:
 
-    agg --pass_output pass t
+    agg --root . --pass_output pass t
+
+`--root .` makes the passing paths relative to the current project directory,
+rather than the temporary aggregate runner's directory.
 
 Iteratively discover an aggregateable list and generated aggregate test:
 
     aggit --out aggregate-candidate t
 
-Run a generated list file later:
+Run the generated aggregate test later (its list paths are runner-relative):
 
-    agg --lists aggregate-candidate.lst
+    yath test aggregate-candidate.t
 
 # USAGE NOTES
 
@@ -343,11 +370,10 @@ test continuing after the rest are done will slow down the suite). And in genera
 more tests will run aggregated if they are grouped so that tests that can't be
 aggregated together are in different groups.
 
-In general you can call `Test2::Aggregate::run_tests` multiple times in a test and
-even load `run_tests` with tests that already contain another `run_tests`, the
-only real issue with multiple calls is that if you use `repeat < 0` on a call,
-[Test2::Plugin::BailOnFail](https://metacpan.org/pod/Test2%3A%3APlugin%3A%3ABailOnFail) is loaded so any subsequent failure, on any following
-`run_tests` call will trigger a Bail.
+You can call `Test2::Aggregate::run_tests` multiple times in a test. Nested calls
+are skipped unless the inner call enables `recursion`. Loading
+[Test2::Plugin::BailOnFail](https://metacpan.org/pod/Test2%3A%3APlugin%3A%3ABailOnFail) through `bail_on_fail` or `repeat < 0` affects
+subsequent tests too: a later failure will also trigger a bail-out.
 
 ## Version 1.00 path compatibility
 
@@ -381,16 +407,17 @@ It might look like this:
 
     use Test::Builder;
     use Test2::V0;
-    use Test2::Aggregator;
+    use Test2::Aggregate;
 
     Test2::Aggregate::run_tests( ... );
 
 ## BEGIN / END Blocks
 
-`BEGIN` / `END` blocks will run at the start/end of each test and any overrides
-etc you might have set will apply to the rest of the tests, so if you use them you
-probably need to make changes for aggregation. An example of such a change is when
-you have a `*GLOBAL::CORE::exit` override to test scripts that can call `exit()`.
+`BEGIN` blocks run as each test file is compiled. `END` blocks are deferred
+until the aggregate process exits, not the end of each individual test file.
+Cleanup needed between files must therefore happen before the file returns.
+Global overrides can affect later tests. One example is a
+`*CORE::GLOBAL::exit` override to test scripts that can call `exit()`.
 A solution is to use something like [Test::Trap](https://metacpan.org/pod/Test%3A%3ATrap): 
 
     BEGIN {
@@ -405,7 +432,7 @@ A solution is to use something like [Test::Trap](https://metacpan.org/pod/Test%3
 [Test::Class](https://metacpan.org/pod/Test%3A%3AClass) is sort of an aggregator itself. You make your tests into modules
 and then load them on the same `.t` file, so ideally you will not end up with many
 `.t` files that would require further aggregation. If you do, due to the [Test::Class](https://metacpan.org/pod/Test%3A%3AClass)
-implementation specifics, those `.t` files won't run under [Test2::Aggregator](https://metacpan.org/pod/Test2%3A%3AAggregator).
+implementation specifics, those `.t` files won't run under [Test2::Aggregate](https://metacpan.org/pod/Test2%3A%3AAggregate).
 
 ## $0 variable
 
@@ -451,11 +478,12 @@ This process can be done with the help of the `agg` script. For example, to try
 all tests under `t/` aggregated and a list of passing tests put under the `pass`
 directory you would do:
 
-    > agg -l pass t
+    > agg --root . --pass_output pass t
 
-(which will use `yath` & [Test2::V0](https://metacpan.org/pod/Test2%3A%3AV0), you can do `agg -p -l pass t` for `prove` & [Test::More](https://metacpan.org/pod/Test%3A%3AMore))
+(which will use `yath` & [Test2::V0](https://metacpan.org/pod/Test2%3A%3AV0), you can do
+`agg --prove --root . --pass_output pass t` for `prove` & [Test::More](https://metacpan.org/pod/Test%3A%3AMore))
 
-If the run completes, thanks to the `-l` option you have a "starting point"
+If the run completes, thanks to `--pass_output` you have a "starting point"
  i.e. a .txt list that can run under the aggregator with the `lists` option:
 
     Test2::Aggregate::run_tests(
@@ -516,9 +544,26 @@ does not expect Windows users (many test suites don't work under StrawberryPerl
 etc). However, if you want Windows filesystems to be supported, it should be simple
 enough as long as you are willing to help with testing - just ask.
 
+# DEVELOPMENT AND RELEASES
+
+`README.md` is generated from this module's POD using [Pod::Markdown](https://metacpan.org/pod/Pod%3A%3AMarkdown).
+Install author dependencies, then run:
+
+    perl Makefile.PL
+    make readme
+    AUTHOR_TESTING=1 prove -Ilib xt/author xt/integration
+    make disttest
+
+`make readme` refreshes the README. `make distdir` (also used by `make dist`
+and `make disttest`) refreshes it automatically before copying distribution
+files. These author targets require [Pod::Markdown](https://metacpan.org/pod/Pod%3A%3AMarkdown), but normal installation
+and `make test` do not. The README author test detects stale generated content;
+review and commit README changes alongside the POD. Set the release date in
+`Changes` when preparing the final release.
+
 # AUTHOR
 
-Dimitrios Kechagias, `<dkechag at cpan.org>`
+Dimitrios Kechagias, [https://metacpan.org/author/DKECHAG](https://metacpan.org/author/DKECHAG)
 
 # BUGS
 

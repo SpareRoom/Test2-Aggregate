@@ -103,6 +103,50 @@ subtest 'create_command output' => sub {
         ['--et', 9, '-Ilib', '-v', 'sample.t'],
         'args_only omits command and yath subcommand'
     );
+
+    $opt{prove} = 1;
+    is([Test2::Aggregate::Helper::create_command(\%opt, 'sample.t')],
+        ['prove', '-Ilib', '-v', 'sample.t'], 'prove never receives --et');
+    $opt{prove} = 0;
+    $opt{event_timeout} = 0;
+    is([Test2::Aggregate::Helper::create_command(\%opt, 'sample.t')],
+        ['yath', 'test', '--et', 0, '-Ilib', '-v', 'sample.t'], 'zero timeout is preserved');
+};
+
+subtest 'automatic fallback normalizes runner defaults' => sub {
+    local %INC = %INC;
+    delete $INC{'Test2/Harness.pm'};
+    local @INC = (sub {
+        die "Harness unavailable\n" if $_[1] eq 'Test2/Harness.pm';
+        return;
+    }, @INC);
+    local @ARGV;
+    my %opt = (event_timeout => 10);
+    Test2::Aggregate::Helper::setup_options(\%opt);
+    ok($opt{prove}, 'falls back to prove');
+    is($opt{test_bundle}, 'Test::More', 'fallback uses prove bundle');
+    ok(!exists $opt{event_timeout}, 'fallback removes timeout');
+    is([Test2::Aggregate::Helper::create_command(\%opt, 'sample.t')],
+        ['prove', 'sample.t'], 'fallback command has no yath arguments');
+    my %custom = (test_bundle => 'Test2::V0');
+    Test2::Aggregate::Helper::setup_options(\%custom);
+    is($custom{test_bundle}, 'Test2::V0', 'explicit bundle survives fallback');
+};
+
+subtest 'absolute inputs and explicit roots' => sub {
+    local @ARGV;
+    my %opt = (prove => 1, absolute => 1, file => path('/tmp/generated.t'));
+    Test2::Aggregate::Helper::setup_options(\%opt);
+    my $code = Test2::Aggregate::Helper::generate_code(\%opt, 'xt/aggregate/check_env.t');
+    ok(index($code, "" . path('xt/aggregate/check_env.t')->absolute) >= 0,
+        'relative input becomes absolute');
+    my $input = 'xt/aggregate/check_env.t';
+    Test2::Aggregate::Helper::generate_code(\%opt, $input);
+    is($input, 'xt/aggregate/check_env.t', 'normalization does not mutate caller input');
+    local @ARGV = ("" . path('xt/aggregate/check_env.t')->absolute);
+    my %root = (prove => 1, root => 'xt/aggregate');
+    Test2::Aggregate::Helper::setup_options(\%root);
+    is($root{root}, "" . path('xt/aggregate')->absolute, 'explicit root is absolute');
 };
 
 done_testing;

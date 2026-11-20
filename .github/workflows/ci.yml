@@ -34,3 +34,12 @@ jobs:
       - run: perl Makefile.PL
       - run: make
       - run: prove -wlvmb t
+      - name: Install release-test dependencies
+        if: matrix.perl-version == '5.42'
+        run: cpanm --notest Pod::Markdown Test::Pod Test::Pod::Coverage Test::Perl::Critic Test2::Harness Test2::Plugin::BailOnFail
+      - name: Author and harness integration tests
+        if: matrix.perl-version == '5.42'
+        run: AUTHOR_TESTING=1 prove -Ilib xt/author xt/integration
+      - name: Test release distribution
+        if: matrix.perl-version == '5.42'
+        run: make disttest

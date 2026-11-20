@@ -17,7 +17,7 @@ $run = Test2::Aggregate::run_tests(
     lists         => ['xt/aggregate/aggregate.lst'],
     root          => $root,
     unique        => 0,
-    bail_on_fail  => 1,
+    bail_on_fail  => eval { require Test2::Plugin::BailOnFail; 1 },
     test_warnings => 1
 );
 

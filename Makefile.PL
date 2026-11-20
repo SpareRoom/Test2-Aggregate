@@ -75,3 +75,15 @@ delete $WriteMakefileArgs{LICENSE}
     unless eval { ExtUtils::MakeMaker->VERSION('6.31'); 1 };
 
 WriteMakefile(%WriteMakefileArgs);
+
+sub MY::postamble {
+    return <<'MAKE';
+
+.PHONY: readme
+readme :
+	$(FULLPERLRUN) author/update-readme.pl
+
+create_distdir distdir : readme
+
+MAKE
+}

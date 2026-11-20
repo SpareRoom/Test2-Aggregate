@@ -68,7 +68,7 @@ GetOptions(
     'test_bundle|t=s',
     'test_warnings|w',
     'verbose|v',
-);
+) or pod2usage(2);
 
 pod2usage({-verbose => 1, -output => \*STDOUT, -noperldoc => 1})
     if $opt{help} || !@ARGV;
@@ -87,3 +87,4 @@ my $code = Test2::Aggregate::Helper::generate_code(\%opt, @ARGV);
 $opt{file}->spew_utf8($code);
 
 exec(Test2::Aggregate::Helper::create_command(\%opt, $opt{file}));
+die "Cannot execute test harness: $!\n";

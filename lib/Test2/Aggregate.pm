@@ -235,8 +235,10 @@ you'd have to do C<use Test2::V0 -no_warnings =E<gt> 1;> to avoid it).
 
 C<stats_output> specifies a path where a file will be created to print out
 running time per test (average if multiple iterations) and passing percentage.
-Output is sorted from slowest test to fastest. On negative C<repeat> the stats
-of each successful run will be written separately instead of the averages.
+With C<repeat == 1>, output is written after each test in execution order, so
+completed results survive an interrupted run. With C<repeat E<gt> 1>, averages
+are written from slowest test to fastest after all iterations complete.
+On negative C<repeat>, each iteration streams its own statistics.
 The name of the file is C<caller_script-YYYYMMDDTHHmmss.txt>.
 If C<'-'> is passed instead of a path, then the output will be written to STDOUT.
 The timing stats are useful because the test harness doesn't normally measure
@@ -277,6 +279,7 @@ Setting C<no_dot> to true matches pre-1.00 behaviour that did not do this.
 =item * C<bail_on_fail> (optional)
 
 Will bail (exit) on first test failure. It is implied for repeat < 0.
+Requires L<Test2::Plugin::BailOnFail>; a missing plugin is a fatal error.
 
 =item * C<recursion> (optional)
 
@@ -337,8 +340,10 @@ sub run_tests {
     $args{caller} =~ s#^.*?([^/]+)$#$1#;
 
     my $warnings = [];
+    if ($args{bail_on_fail} || $args{repeat} < 0) {
+        eval 'use Test2::Plugin::BailOnFail; 1' or die $@;
+    }
     if ($args{repeat} < 0) {
-        eval 'use Test2::Plugin::BailOnFail';
         my $iter = 0;
         while (!@$warnings) {
             $iter++;
@@ -353,7 +358,6 @@ sub run_tests {
             }
         }
     } elsif ($args{test_warnings}) {
-        eval 'use Test2::Plugin::BailOnFail' if $args{bail_on_fail};
         $warnings = _process_warnings(
             Test2::V0::warnings { _run_tests(\@tests, \%args) },
             \%args
@@ -364,7 +368,6 @@ sub run_tests {
             'No warnings in the aggregate tests.'
         );
     } else {
-        eval 'use Test2::Plugin::BailOnFail' if $args{bail_on_fail};
         _run_tests(\@tests, \%args);
     }
 
@@ -460,6 +463,10 @@ sub _run_tests {
             $stats{$test_nm}{timestamp} = _timestamp();
 
             my $exec_error;
+            # aggit uses this marker to distinguish an interrupted test from
+            # harness startup errors and failures after the suite has finished.
+            path($args->{_progress_file})->spew_utf8("$test_nm\n")
+                if $args->{_progress_file};
             my $result = subtest $iter. "Running test $test_nm" => sub {
                 eval $args->{pre_eval} if $args->{pre_eval};
 
@@ -489,6 +496,8 @@ sub _run_tests {
             # per line to avoid losing them in case of SIG
             _print_stats($fh, \%stats, $args, $test_nm)
                 if $args->{stats_output} && $repeat == 1;
+            path($args->{_progress_file})->spew_utf8('')
+                if $args->{_progress_file};
         }
     }
 
@@ -608,6 +617,8 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
  --prove,            -p      : Force prove (default is yath/Test2 if installed).
  --verbose,          -v      : Verbose (passed to yath/prove)
  --absolute,         -a      : Use absolute paths in generated files. Disabled with -r.
+ --include_regex <s> -ir <s> : Regex for test paths to include.
+ --exclude_regex <s> -er <s> : Regex for test paths to exclude.
  --root <s>          -r <s>  : Define a custom root dir (default is current dir).
  --include <s>,      -I <s>  : Library paths to include.
  --test_warnings,    -w      : Fail tests on warnings.
@@ -623,10 +634,29 @@ or to check whether specific tests can run successfully under Test2::Aggregate.
 
  aggit [options] <file/dir1 ...>
 
-Runs tests through an aggregate test repeatedly. On each failed run, the first
-test file that did not make it to the passing output is removed and the remaining
-set is tried again. This is a coarse way to discover a starting list of tests
-that can be aggregated together.
+Runs tests through an aggregate test repeatedly. On each failed run, the active
+test file is removed and the remaining set is tried again. Requires
+L<Test2::Plugin::BailOnFail>. Startup failures and failures after all test files
+have completed abort the command with a nonzero exit status instead of removing
+tests. This is a coarse way to discover a starting list of tests that can be
+aggregated together, not proof that each removed test is independently broken.
+
+C<--sort>, C<--shuffle>, and C<--reverse> are applied once during discovery.
+The resulting order is preserved across retries and in the generated runner.
+By default, list entries are relative to the generated runner's directory;
+C<--absolute> writes absolute paths. C<--root> resolves inputs against a custom
+directory. C<--exclude_regex> and C<--exclude_list> filter the discovered tests.
+
+C<aggit> passes C<--event_timeout SECONDS> (alias C<-et>, default 10) to
+C<yath> as C<--et SECONDS>. This is an inactivity timeout, not a total runtime
+limit; Harness normally defaults to 60 seconds. The timeout applies to the
+generated aggregate runner, so C<# HARNESS-NO-TIMEOUT> comments in individual
+aggregated files do not disable it. Under C<--prove>, or automatic fallback to
+C<prove> when Harness is unavailable, this timeout is not provided and hung
+tests require external supervision.
+
+For C<agg>, C<--pass_output> takes precedence over C<--stats_output> when both
+are supplied.
 
 =head2 Common helper workflows
 
@@ -640,15 +670,18 @@ Force C<prove> and L<Test::More> compatibility mode:
 
 Generate a directory containing a list of tests that passed when aggregated:
 
- agg --pass_output pass t
+ agg --root . --pass_output pass t
+
+C<--root .> makes the passing paths relative to the current project directory,
+rather than the temporary aggregate runner's directory.
 
 Iteratively discover an aggregateable list and generated aggregate test:
 
  aggit --out aggregate-candidate t
 
-Run a generated list file later:
+Run the generated aggregate test later (its list paths are runner-relative):
 
- agg --lists aggregate-candidate.lst
+ yath test aggregate-candidate.t
 
 =head1 USAGE NOTES
 
@@ -670,11 +703,10 @@ test continuing after the rest are done will slow down the suite). And in genera
 more tests will run aggregated if they are grouped so that tests that can't be
 aggregated together are in different groups.
 
-In general you can call C<Test2::Aggregate::run_tests> multiple times in a test and
-even load C<run_tests> with tests that already contain another C<run_tests>, the
-only real issue with multiple calls is that if you use C<repeat < 0> on a call,
-L<Test2::Plugin::BailOnFail> is loaded so any subsequent failure, on any following
-C<run_tests> call will trigger a Bail.
+You can call C<Test2::Aggregate::run_tests> multiple times in a test. Nested calls
+are skipped unless the inner call enables C<recursion>. Loading
+L<Test2::Plugin::BailOnFail> through C<bail_on_fail> or C<repeat E<lt> 0> affects
+subsequent tests too: a later failure will also trigger a bail-out.
 
 =head2 Version 1.00 path compatibility
 
@@ -708,16 +740,17 @@ It might look like this:
 
  use Test::Builder;
  use Test2::V0;
- use Test2::Aggregator;
+ use Test2::Aggregate;
 
  Test2::Aggregate::run_tests( ... );
 
 =head2 BEGIN / END Blocks
 
-C<BEGIN> / C<END> blocks will run at the start/end of each test and any overrides
-etc you might have set will apply to the rest of the tests, so if you use them you
-probably need to make changes for aggregation. An example of such a change is when
-you have a C<*GLOBAL::CORE::exit> override to test scripts that can call C<exit()>.
+C<BEGIN> blocks run as each test file is compiled. C<END> blocks are deferred
+until the aggregate process exits, not the end of each individual test file.
+Cleanup needed between files must therefore happen before the file returns.
+Global overrides can affect later tests. One example is a
+C<*CORE::GLOBAL::exit> override to test scripts that can call C<exit()>.
 A solution is to use something like L<Test::Trap>: 
 
  BEGIN {
@@ -732,7 +765,7 @@ A solution is to use something like L<Test::Trap>:
 L<Test::Class> is sort of an aggregator itself. You make your tests into modules
 and then load them on the same C<.t> file, so ideally you will not end up with many
 C<.t> files that would require further aggregation. If you do, due to the L<Test::Class>
-implementation specifics, those C<.t> files won't run under L<Test2::Aggregator>.
+implementation specifics, those C<.t> files won't run under L<Test2::Aggregate>.
 
 =head2 $0 variable
 
@@ -778,11 +811,12 @@ This process can be done with the help of the C<agg> script. For example, to try
 all tests under C<t/> aggregated and a list of passing tests put under the C<pass>
 directory you would do:
 
- > agg -l pass t
+ > agg --root . --pass_output pass t
 
-(which will use C<yath> & L<Test2::V0>, you can do C<agg -p -l pass t> for C<prove> & L<Test::More>)
+(which will use C<yath> & L<Test2::V0>, you can do
+C<agg --prove --root . --pass_output pass t> for C<prove> & L<Test::More>)
 
-If the run completes, thanks to the C<-l> option you have a "starting point"
+If the run completes, thanks to C<--pass_output> you have a "starting point"
  i.e. a .txt list that can run under the aggregator with the C<lists> option:
 
  Test2::Aggregate::run_tests(
@@ -843,9 +877,26 @@ does not expect Windows users (many test suites don't work under StrawberryPerl
 etc). However, if you want Windows filesystems to be supported, it should be simple
 enough as long as you are willing to help with testing - just ask.
 
+=head1 DEVELOPMENT AND RELEASES
+
+C<README.md> is generated from this module's POD using L<Pod::Markdown>.
+Install author dependencies, then run:
+
+ perl Makefile.PL
+ make readme
+ AUTHOR_TESTING=1 prove -Ilib xt/author xt/integration
+ make disttest
+
+C<make readme> refreshes the README. C<make distdir> (also used by C<make dist>
+and C<make disttest>) refreshes it automatically before copying distribution
+files. These author targets require L<Pod::Markdown>, but normal installation
+and C<make test> do not. The README author test detects stale generated content;
+review and commit README changes alongside the POD. Set the release date in
+C<Changes> when preparing the final release.
+
 =head1 AUTHOR
 
-Dimitrios Kechagias, C<< <dkechag at cpan.org> >>
+Dimitrios Kechagias, L<https://metacpan.org/author/DKECHAG>
  
 =head1 BUGS
 

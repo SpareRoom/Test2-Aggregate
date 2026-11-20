@@ -41,6 +41,10 @@ the supplied test files, directories, or list files.
 sub setup_options {
     my $opt = shift;
 
+    unless ($opt->{prove}) {
+        eval "use Test2::Harness";
+        $opt->{prove} = 1 if $@;
+    }
     $opt->{test_bundle} ||= $opt->{prove} ? 'Test::More' : 'Test2::V0';
     $opt->{stats_output}  = $opt->{pass_output} if $opt->{pass_output};
     $opt->{out} =~ s/\.t$// if $opt->{out};
@@ -52,19 +56,15 @@ sub setup_options {
 
     if ($opt->{root}) {
         $opt->{absolute} = undef;
-        croak "Specified --root does not exist" unless -e $opt->{root};
+        croak "Specified --root does not exist" unless -d $opt->{root};
+        $opt->{root} = "" . path($opt->{root})->absolute;
         foreach (@ARGV) {
-            my $path = path($opt->{root}, $_);
+            my $path = path($_)->is_absolute ? path($_) : path($opt->{root}, $_);
             croak "$path doesn't exist" unless -e $path;
         }
     } elsif (!$opt->{absolute}) {
         $opt->{root} = "./";
         $opt->{relative_root} = 1;
-    }
-
-    unless ($opt->{prove}) {
-        eval "use Test2::Harness";
-        $opt->{prove} = 1 if $@;
     }
 }
 
@@ -77,7 +77,8 @@ sub create_command {
     my @args = ($file);
     unshift @args, '-v'                            if $opt->{verbose};
     unshift @args, "-I" . $opt->{include}          if $opt->{include};
-    unshift @args, '--et', $opt->{event_timeout}   if $opt->{event_timeout};
+    unshift @args, '--et', $opt->{event_timeout}
+        if !$opt->{prove} && defined $opt->{event_timeout};
     unshift @args, 'test' unless $opt->{prove} || $args_only;
 
     return @args if $args_only;
@@ -85,14 +86,20 @@ sub create_command {
 }
 
 sub generate_code {
-    my $opt  = shift;
+    my $opt  = { %{shift()} };
+    $opt->{root} ||= "" . path('.')->absolute if $opt->{lists} && $opt->{absolute};
     my $code = _test_bundle_use($opt->{test_bundle})
         . "\nuse Test2::Aggregate;\n\nTest2::Aggregate::run_tests(\n";
-    for (qw/test_warnings reverse shuffle sort dry_run bail_on_fail relative_root/) {
+    for (qw/test_warnings reverse shuffle sort dry_run bail_on_fail relative_root absolute/) {
         $code .= "\t$_ => 1,\n" if $opt->{$_};
     }
-    for (qw/stats_output root/) {
-       $code .= "\t$_ => " . _quote_perl_string($opt->{$_}) . ",\n" if $opt->{$_};
+    for (qw/stats_output root _progress_file/) {
+        next unless $opt->{$_};
+        my $value = $opt->{$_};
+        if ($_ eq 'root' && $opt->{lists} && $opt->{relative_root}) {
+            $value = path($value)->absolute->relative($opt->{file}->parent->absolute);
+        }
+        $code .= "\t$_ => " . _quote_perl_string($value) . ",\n";
     }
     $code .= "\texclude => " . _quote_perl_string($opt->{exclude_pattern}) . ",\n"
         if $opt->{exclude_pattern};
@@ -117,13 +124,16 @@ sub _absolute_paths {
     my $opt    = shift;
     my $t_file = $opt->{file}->parent->absolute;
     my @norm;
-    foreach my $path (@_) {
+    foreach my $input (@_) {
+        my $path = $input;
         unless (substr($path, 0, 1) eq '/') {
             if ($opt->{relative_root}) {
                 my $abs = path($opt->{root}, $path)->absolute;
-                $path = $abs->relative($t_file);
+                # List entries also use root, so retain the input root for lists.
+                my $base = $opt->{lists} ? path($opt->{root})->absolute : $t_file;
+                $path = $abs->relative($base);
             } elsif ($opt->{absolute}) {
-                $path = path($opt->{root}, $path);
+                $path = path($opt->{root} || '.', $path)->absolute;
             }
         }
         push @norm, $path;
