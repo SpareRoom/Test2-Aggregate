@@ -113,9 +113,37 @@ subtest 'aggit discovery and ordering' => sub {
     my ($status, $log) = helper('aggit', '--prove', '--reverse', '--out', "$base",
         "$fail", "$pass", "$second");
     is($status, 0, 'multiple survivors succeed') or diag $log;
+    unlike($log, qr/Running test/, 'discovery dry run prints no TAP');
     is_deeply([split /\n/, path("$base.lst")->slurp_utf8],
         [map { "" . $_->relative($out) } ($second, $pass)],
         'discovery order is retained after removal');
+
+    # Runner in a different directory than the cwd the list is relative to.
+    my $exclude = $tmp->child('exclude.lst');
+    $exclude->spew_utf8("# comment\n./" . $fail->relative($repo) . "\n");
+    $base = $out->child('exclude-list');
+    ($status, $log) = helper('aggit', '--prove', '--exclude_list', "$exclude",
+        '--out', "$base", map { "" . $_->relative($repo) } ($fail, $pass, $second));
+    is($status, 0, 'exclude list run succeeds') or diag $log;
+    like($log, qr/iter 1: 2 test files/, 'excluded test is not attempted');
+    unlike($log, qr/\*\* Removing/, 'excluded test did not need removal');
+    is_deeply([map { "" . path($out, $_)->realpath } split /\n/, path("$base.lst")->slurp_utf8],
+        [map { "" . $_->realpath } ($pass, $second)],
+        'exclude list is applied with a runner outside the cwd');
+};
+
+subtest 'aggit applies -I to a project-local test bundle' => sub {
+    plan skip_all => 'Test2::Plugin::BailOnFail unavailable' unless $have_bail;
+    my $proj = $tmp->child('project');
+    $proj->child('t/lib')->mkpath;
+    $proj->child('t/lib/LocalBundle.pm')->spew_utf8("package LocalBundle;\n1;\n");
+    $proj->child('t/pass.t')->spew_utf8($pass->slurp_utf8);
+    my $base = $out->child('local-bundle');
+    my ($status, $log) = run_command($proj, $^X, "$repo/aggit", '--prove',
+        '-I', 't/lib', '--test_bundle', 'Test::More,LocalBundle',
+        '--out', "$base", 't/pass.t');
+    is($status, 0, 'bundle found through -I during discovery and run') or diag $log;
+    like(path("$base.lst")->slurp_utf8, qr{t/pass\.t}, 'test retained');
 };
 
 subtest 'fallback and infrastructure failures' => sub {

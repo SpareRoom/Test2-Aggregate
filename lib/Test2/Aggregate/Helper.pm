@@ -24,12 +24,23 @@ our $VERSION = '1.00';
 
 Normalizes command-line options used by the helper scripts. This sets defaults,
 validates paths and regexes, prepares include/exclude patterns, and falls back to
-C<prove> when L<Test2::Harness> is unavailable.
+C<prove> when L<Test2::Harness> is unavailable. An C<exclude_list> is resolved
+to canonical paths (relative entries against C<root> or the current directory).
+
+=head2 is_excluded(\%opt, $test)
+
+Returns true if C<$test> (a path to an existing test file) is one of the
+entries of the C<exclude_list> processed by C<setup_options>.
+
+=head2 canonical_path($path)
+
+Returns the absolute path with symlinks and C<..> resolved where possible.
 
 =head2 create_command(\%opt, $file, $args_only)
 
 Builds the C<prove> or C<yath> command used to run the generated aggregate test
-file. When C<$args_only> is true, only the arguments are returned.
+file. C<include> may be a single path or an array ref of paths. When
+C<$args_only> is true, only the arguments are returned.
 
 =head2 generate_code(\%opt, @paths)
 
@@ -50,7 +61,7 @@ sub setup_options {
     $opt->{out} =~ s/\.t$// if $opt->{out};
     delete $opt->{event_timeout} if $opt->{prove};
     $opt->{exclude_pattern} = _create_exclude_pattern($opt)
-        if $opt->{exclude_regex} || $opt->{exclude_list};
+        if $opt->{exclude_regex};
     $opt->{include_pattern} = _create_include_pattern($opt)
         if $opt->{include_regex};
 
@@ -66,6 +77,22 @@ sub setup_options {
         $opt->{root} = "./";
         $opt->{relative_root} = 1;
     }
+
+    $opt->{exclude_paths} = _read_exclude_list($opt) if $opt->{exclude_list};
+}
+
+sub is_excluded {
+    my $opt  = shift;
+    my $test = shift;
+
+    return 0 unless $opt->{exclude_paths};
+    return $opt->{exclude_paths}->{canonical_path($test)} ? 1 : 0;
+}
+
+sub canonical_path {
+    my $path = path(shift)->absolute;
+    my $real = eval { $path->realpath };
+    return "" . ($real || $path);
 }
 
 sub create_command {
@@ -74,9 +101,11 @@ sub create_command {
     my $args_only = shift;
 
     my $cmd  = $opt->{prove} ? 'prove' : 'yath';
+    my @inc  = ref $opt->{include} ? @{$opt->{include}}
+        : defined $opt->{include} ? $opt->{include} : ();
     my @args = ($file);
     unshift @args, '-v'                            if $opt->{verbose};
-    unshift @args, "-I" . $opt->{include}          if $opt->{include};
+    unshift @args, map { "-I$_" } grep { length } @inc;
     unshift @args, '--et', $opt->{event_timeout}
         if !$opt->{prove} && defined $opt->{event_timeout};
     unshift @args, 'test' unless $opt->{prove} || $args_only;
@@ -144,30 +173,32 @@ sub _absolute_paths {
 
 sub _create_exclude_pattern {
     my ($opt) = @_;
-    my @parts;
 
-    if ($opt->{exclude_regex}) {
-        eval { qr/$opt->{exclude_regex}/ };
-        croak "Invalid --exclude_regex '$opt->{exclude_regex}': $@" if $@;
-        push @parts, "(?:$opt->{exclude_regex})";
+    eval { qr/$opt->{exclude_regex}/ };
+    croak "Invalid --exclude_regex '$opt->{exclude_regex}': $@" if $@;
+
+    return "(?:$opt->{exclude_regex})";
+}
+
+# Exclude list entries are resolved against --root (or the current directory)
+# to canonical paths, so they match regardless of where the generated runner
+# lives (e.g. a temp directory) and of how the discovered path is spelled.
+sub _read_exclude_list {
+    my ($opt) = @_;
+
+    croak "Specified --exclude_list does not exist" unless -e $opt->{exclude_list};
+    my $base = path($opt->{root} || '.')->absolute;
+    my %paths;
+    foreach my $line (split /\r?\n/, path($opt->{exclude_list})->slurp_utf8) {
+        next if $line =~ /^\s*(?:#|$)/;
+        $line =~ s/^\s+|\s+$//g;
+        next unless length $line;
+
+        my $test = path($line)->is_absolute ? path($line) : path($base, $line);
+        $paths{canonical_path($test)} = 1;
     }
 
-    if ($opt->{exclude_list}) {
-        croak "Specified --exclude_list does not exist" unless -e $opt->{exclude_list};
-        my @list = split /\r?\n/, path($opt->{exclude_list})->slurp_utf8;
-        foreach my $line (@list) {
-            next if $line =~ /^\s*(?:#|$)/;
-            $line =~ s/^\s+|\s+$//g;
-            next unless length $line;
-
-            push @parts, '^' . quotemeta($line) . '$';
-
-            my $norm = _normalize_test_path($line);
-            push @parts, '^' . quotemeta($norm) . '$' if $norm ne $line;
-        }
-    }
-
-    return join('|', @parts);
+    return \%paths;
 }
 
 sub _create_include_pattern {
@@ -177,12 +208,6 @@ sub _create_include_pattern {
     croak "Invalid --include_regex '$opt->{include_regex}': $@" if $@;
 
     return "(?:$opt->{include_regex})";
-}
-
-sub _normalize_test_path {
-    my ($test) = @_;
-    $test =~ s#^\./##;
-    return $test;
 }
 
 sub _quote_perl_string {

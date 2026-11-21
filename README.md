@@ -241,7 +241,8 @@ The parameters to pass:
 - `pass_only` (optional)
 
     Modifies `stats_output` by making it only print out a list of passing tests.
-    Useful for creating lists of aggregateable tests.
+    Useful for creating lists of aggregateable tests. With `test_warnings`, tests
+    that produced warnings are not considered passing.
     Has no effect if `stats_output` is not defined.
 
 - `absolute` (optional)

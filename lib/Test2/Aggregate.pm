@@ -263,7 +263,8 @@ Additions with C<extend_stats> as of the current version:
 =item * C<pass_only> (optional)
 
 Modifies C<stats_output> by making it only print out a list of passing tests.
-Useful for creating lists of aggregateable tests.
+Useful for creating lists of aggregateable tests. With C<test_warnings>, tests
+that produced warnings are not considered passing.
 Has no effect if C<stats_output> is not defined.
 
 =item * C<absolute> (optional)
@@ -444,7 +445,13 @@ sub _run_tests {
 
     my $repeat = $args->{repeat};
     $repeat = 1 if $repeat < 0;
-    my (%stats, $start);
+    my (%stats, %warned, $start, $warned);
+
+    # Track warnings per test, so stats written before the final warning
+    # processing (e.g. streamed pass_only) already see them. Installed once per
+    # run, not per test, so handlers that tests install (e.g. NoWarnings on
+    # first load) stay in place for the following tests.
+    local $SIG{__WARN__} = _warn_tracker(\$warned) if $args->{test_warnings};
 
     require Time::HiRes if $args->{stats_output};
     my $fh = _stats_fh($args);
@@ -463,6 +470,7 @@ sub _run_tests {
             $stats{$test_nm}{timestamp} = _timestamp();
 
             my $exec_error;
+            $warned = 0;
             # aggit uses this marker to distinguish an interrupted test from
             # harness startup errors and failures after the suite has finished.
             path($args->{_progress_file})->spew_utf8("$test_nm\n")
@@ -485,11 +493,14 @@ sub _run_tests {
                         if !$args->{allow_errors} && $exec_error;
             };
 
+            $warned{$test_nm} = 1 if $warned;
             warn "<-Test2::Aggregate\n" if $args->{test_warnings};
 
             $stats{$test_nm}{time} += (Time::HiRes::time() - $start)/$repeat
                 if $args->{stats_output};
             $stats{$test_nm}{pass_perc} += $result ? 100/$repeat : 0;
+            # Matches _process_warnings, which zeroes pass_perc on warnings
+            $stats{$test_nm}{pass_perc} = 0 if $warned{$test_nm};
             $count++;
 
             # If we have single iteration, no need to collect stats so write
@@ -507,6 +518,17 @@ sub _run_tests {
         _close_stats($fh, $args);
     }
     $args->{stats} = \%stats;
+}
+
+sub _warn_tracker {
+    my $warned = shift;
+    my $outer  = $SIG{__WARN__};
+
+    return sub {
+        $$warned = 1 if join('', @_) =~ /\S/;
+        return $outer->(@_) if ref $outer eq 'CODE';
+        print STDERR @_;
+    };
 }
 
 sub _test_name {
@@ -534,18 +556,17 @@ sub _stats_fh {
 
     return unless $args->{stats_output};
 
-    unless (-e $args->{stats_output}) {
-        my @create = mkpath($args->{stats_output});
-        unless (scalar @create) {
-            warn "Could not create ".$args->{stats_output};
-            return;
-        }
-    }
-
     my $fh;
     if ($args->{stats_output} =~ /^-$/) {
         $fh = *STDOUT
     } else {
+        unless (-e $args->{stats_output}) {
+            my @create = mkpath($args->{stats_output});
+            unless (scalar @create) {
+                warn "Could not create ".$args->{stats_output};
+                return;
+            }
+        }
         my $file = $args->{stats_output}."/".$args->{caller}."-"._timestamp().".txt";
         open($fh, '>', $file) or die "Can't open > $file: $!";
     }

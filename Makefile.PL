@@ -47,7 +47,7 @@ my %WriteMakefileArgs = (
         resources => {
             repository => {
                 type => 'git',
-                url => 'git://github.com/SpareRoom/Test2-Aggregate.git',
+                url => 'https://github.com/SpareRoom/Test2-Aggregate.git',
                 web => 'https://github.com/SpareRoom/Test2-Aggregate',
             }
         }

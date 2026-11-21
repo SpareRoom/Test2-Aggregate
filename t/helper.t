@@ -34,8 +34,27 @@ subtest 'setup_options with include/exclude inputs' => sub {
 
     my $ex = qr/$opt{exclude_pattern}/;
     ok('my/fail_test.t' =~ $ex, 'exclude regex included');
-    ok('xt/aggregate/check_env.t' =~ $ex, 'exclude list entry included');
-    ok('./xt/aggregate/check_plan.t' =~ $ex, 'exclude list normalized match included');
+    ok('xt/aggregate/check_env.t' !~ $ex, 'exclude list is not part of the regex');
+
+    my $excluded = sub { Test2::Aggregate::Helper::is_excluded(\%opt, shift) };
+    ok($excluded->('xt/aggregate/check_env.t'), 'exclude list entry matched');
+    ok($excluded->('./xt/aggregate/check_env.t'), 'leading ./ is normalized');
+    ok($excluded->('xt/aggregate/check_plan.t'), 'list entry with ./ matched');
+    ok($excluded->(path('xt/aggregate/check_plan.t')->absolute), 'absolute path matched');
+    ok($excluded->('t/../xt/aggregate/check_plan.t'), 'path with .. matched');
+    ok(!$excluded->('t/00-load.t'), 'other tests not excluded');
+};
+
+subtest 'exclude list relative to --root' => sub {
+    my $list = Path::Tiny->tempfile;
+    $list->spew_utf8("check_env.t\n");
+    local @ARGV = ();
+    my %opt = (prove => 1, root => 'xt/aggregate', exclude_list => "$list");
+    Test2::Aggregate::Helper::setup_options(\%opt);
+    ok(Test2::Aggregate::Helper::is_excluded(\%opt, 'xt/aggregate/check_env.t'),
+        'entry resolved against root');
+    ok(!Test2::Aggregate::Helper::is_excluded(\%opt, 'check_env.t'),
+        'entry not resolved against cwd');
 };
 
 subtest 'setup_options validation' => sub {
@@ -107,6 +126,8 @@ subtest 'create_command output' => sub {
     $opt{prove} = 1;
     is([Test2::Aggregate::Helper::create_command(\%opt, 'sample.t')],
         ['prove', '-Ilib', '-v', 'sample.t'], 'prove never receives --et');
+    is([Test2::Aggregate::Helper::create_command({%opt, include => ['lib', 't/lib']}, 'sample.t')],
+        ['prove', '-Ilib', '-It/lib', '-v', 'sample.t'], 'multiple include paths kept in order');
     $opt{prove} = 0;
     $opt{event_timeout} = 0;
     is([Test2::Aggregate::Helper::create_command(\%opt, 'sample.t')],

@@ -39,7 +39,7 @@ runner; timeout comments in aggregated files are not processed by the harness.
  --exclude_list <s>  -el <s> : File with test paths to exclude (one per line).
  --event_timeout <i> -et <i> : Event timeout for yath (to determine hung tests). Default 10.
  --root <s>          -r <s>  : Define a custom root dir (default is current dir).
- --include <s>,      -I <s>  : Library paths to include.
+ --include <s>,      -I <s>  : Library path to include (repeatable).
  --test_bundle <s>,  -t      : Test bundle (def: Test2::V0 or Test::More if -p). Comma-separated list.
  --reverse                   : Reverse the test order.
  --shuffle                   : Shuffle the test order.
@@ -50,8 +50,6 @@ runner; timeout comments in aggregated files are not processed by the harness.
 
 use strict;
 use warnings;
-
-use lib 'lib';
 
 use Carp;
 use Getopt::Long;
@@ -67,9 +65,9 @@ GetOptions(
     'exclude_regex|er=s',
     'exclude_list|el=s',
     'help|h',
-    'include|I=s',
+    'include|I=s@',
     'lists|l',
-    'event_timeout|et=s',
+    'event_timeout|et=i',
     'out|o=s',
     'prove|p',
     'reverse',
@@ -106,16 +104,28 @@ my $code = Test2::Aggregate::Helper::generate_code({%opt, dry_run => 1, absolute
 $code =~ s/(Test2::Aggregate::run_tests)/\$stats = $1/;
 
 {
+    # Discovery is a dry run; capture its TAP so it is not mistaken for a test run.
     local $0 = "" . $file->absolute;
-    eval $code;
-    croak $@ if $@;
+    # The harness gets -I paths, but discovery runs here, so apply them too.
+    my @include = ref $opt{include} ? @{$opt{include}} : grep {defined} $opt{include};
+    local @INC = ((map { "" . path($_)->absolute } grep {length} @include), @INC);
+    # Load the bundle first, as Test::Builder must load before Test2 initializes.
+    for my $module (split /,/, $opt{test_bundle}) {
+        eval "require $module; 1" or croak "Cannot load test bundle $module: $@";
+    }
+    my $error;
+    Test2::API::intercept(sub { eval $code; $error = $@ });
+    croak $error if $error;
 }
 croak "No tests found" unless $stats && %$stats;
 
 my @test_list = map {
     my $path = path($_)->absolute;
     "" . ($opt{absolute} ? $path : $path->relative($file->parent->absolute));
+} grep {
+    !Test2::Aggregate::Helper::is_excluded(\%opt, path($_)->absolute)
 } sort { $stats->{$a}->{test_no} <=> $stats->{$b}->{test_no} } keys %$stats;
+croak "No tests left after applying --exclude_list" unless @test_list;
 
 # Discovery has already filtered and ordered the tests. Keep that exact order.
 delete @opt{qw(reverse shuffle sort include_pattern exclude_pattern)};
