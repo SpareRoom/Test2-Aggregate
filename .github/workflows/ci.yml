@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        perl-version:
+          - '5.42'
+          - '5.40'
+          - '5.36'
+          - '5.32'
+          - '5.28'
+          - '5.24'
+          - '5.20'
+          - '5.16'
+          - '5.12'
+          - '5.8'
+
+    container:
+      image: perldocker/perl-tester:${{ matrix.perl-version }}
+
+    steps:
+      - uses: actions/checkout@main
+        with:
+            submodules: recursive
+      - run: perl -V
+      - run: cpanm --notest --installdeps --verbose .
+      - run: perl Makefile.PL
+      - run: make
+      - run: prove -wlvmb t
+      - name: Install release-test dependencies
+        if: matrix.perl-version == '5.42'
+        run: cpanm --notest Pod::Markdown Test::Pod Test::Pod::Coverage Test::Perl::Critic Test2::Harness Test2::Plugin::BailOnFail
+      - name: Author and harness integration tests
+        if: matrix.perl-version == '5.42'
+        run: AUTHOR_TESTING=1 prove -Ilib xt/author xt/integration
+      - name: Test release distribution
+        if: matrix.perl-version == '5.42'
+        run: make disttest
